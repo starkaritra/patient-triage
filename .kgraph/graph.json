@@ -1,11 +1,11 @@
 {
-  "version": "1.1.0",
+  "version": "2.0.0",
   "project": {
     "name": "PatientTriage.ai",
-    "summary": "Explainable, safety-biased clinical decision-support triage system with dynamic deterioration tracking, active VOI questioning, and regulatory audit trail.",
+    "summary": "Explainable, safety-biased clinical decision-support triage system with dynamic deterioration tracking, active VOI questioning, FHIR v4 ingestion, neurosymbolic SLM core, and regulatory audit trail.",
     "root": "C:\\Code\\patient-triage",
     "created_at": "2026-08-30T00:30:00Z",
-    "updated_at": "2026-08-30T01:05:00Z"
+    "updated_at": "2026-08-30T02:05:00Z"
   },
   "nodes": {
     "app": {
@@ -15,17 +15,24 @@
       "summary": "Interactive 3-workstation clinical dashboard: Intake/Scorer, Waiting Room Radar, and Audit/Override Log.",
       "file": "app.py"
     },
+    "triage.api.fhir": {
+      "key": "triage.api.fhir",
+      "type": "service",
+      "label": "FastAPI FHIR v4 Ingestion Gateway",
+      "summary": "RESTful HL7 FHIR v4 listener (/Observation, /Patient, /Bundle) with RiskAssessment resource export.",
+      "file": "architecture.md"
+    },
     "triage.models": {
       "key": "triage.models",
       "type": "data",
-      "label": "Clinical Data Contracts (v1)",
+      "label": "Clinical Data Contracts (v2)",
       "summary": "Pydantic v2 schemas: PatientRecord (with medications, allergies, vitals_history), Vitals, AgeCategory, ESILevel, TriageResult.",
       "file": "triage/models.py"
     },
     "triage.rules": {
       "key": "triage.rules",
       "type": "component",
-      "label": "Physiological & Medication Red-Lines (v1)",
+      "label": "Physiological & Medication Red-Lines (v2)",
       "summary": "Age-stratified deterministic vital thresholds (PEWS, NEWS2, qSOFA) & high-risk medication danger alerts.",
       "file": "triage/rules.py"
     },
@@ -33,27 +40,27 @@
       "key": "triage.engine",
       "type": "component",
       "label": "Base & Algorithmic Triage Engine",
-      "summary": "Abstract BaseTriageEngine contract and deterministic AlgorithmicTriageEngine core (<50ms SLA).",
+      "summary": "Abstract BaseTriageEngine contract, deterministic AlgorithmicTriageEngine core, and neurosymbolic LLMTriageEngine.",
       "file": "triage/engine.py"
     },
     "triage.voi": {
       "key": "triage.voi",
       "type": "component",
-      "label": "Expanded Active VOI Engine (v1: 10 Rules)",
+      "label": "Expanded Active VOI Engine (10 Rules)",
       "summary": "Entropy-reducing clinical follow-up question bank across 10 acute emergency presentation categories.",
       "file": "triage/voi.py"
     },
     "triage.queue": {
       "key": "triage.queue",
       "type": "component",
-      "label": "Dynamic Queue & Deterioration Radar (v1: Vital Velocity)",
-      "summary": "Safe wait-time degradation, vital velocity tracking (Delta-SBP/HR/SpO2), breach alerts, and 3x surge mode routing.",
+      "label": "Dynamic Queue & Deterioration Radar (SQLite WAL)",
+      "summary": "Safe wait-time degradation, vital velocity tracking (Delta-SBP/HR/SpO2), breach alerts, and concurrent SQLite WAL persistence.",
       "file": "triage/queue.py"
     },
     "triage.audit": {
       "key": "triage.audit",
       "type": "component",
-      "label": "HIPAA De-Identified Audit Trail (v1)",
+      "label": "HIPAA De-Identified Audit Trail",
       "summary": "Append-only audit ledger recording AI suggestions, VOI Q&A, and clinician overrides with SHA-256 pseudonymization at rest.",
       "file": "triage/audit.py"
     },
@@ -63,6 +70,13 @@
       "label": "20-Patient Multi-Age Benchmark Cohort",
       "summary": "Synthetic test patients across pediatric, adult, and geriatric clinical presentations with medications & serial vitals.",
       "file": "triage/cohort.py"
+    },
+    "triage.facility": {
+      "key": "triage.facility",
+      "type": "component",
+      "label": "Declarative Facility Profile Engine",
+      "summary": "Loads YAML facility profiles (Level 1 Trauma vs Rural Access) for dynamic threshold and resource adaptation.",
+      "file": "architecture.md"
     },
     "dec.001": {
       "key": "dec.001",
@@ -88,43 +102,71 @@
     "dec.004": {
       "key": "dec.004",
       "type": "decision",
-      "label": "DEC-004: Graded History & Medication Profiling (v1)",
+      "label": "DEC-004: Graded History & Medication Profiling",
       "summary": "Scores continuous history completeness and flags high-risk medication categories.",
       "file": "decisions.md"
     },
     "dec.005": {
       "key": "dec.005",
       "type": "decision",
-      "label": "DEC-005: Multi-System VOI Bank (v1)",
+      "label": "DEC-005: Multi-System VOI Bank (10 Rules)",
       "summary": "Expands to 10 acute clinical syndrome triggers and reciprocal entropy reduction.",
       "file": "decisions.md"
     },
     "dec.006": {
       "key": "dec.006",
       "type": "decision",
-      "label": "DEC-006: HIPAA Safe Harbor Pseudonymization (v1)",
+      "label": "DEC-006: HIPAA Safe Harbor Pseudonymization",
       "summary": "Deterministic SHA-256 tokenization (PT-HASH8) of patient identities in audit storage at rest.",
       "file": "decisions.md"
     },
     "dec.007": {
       "key": "dec.007",
       "type": "decision",
-      "label": "DEC-007: Vital Sign Velocity Tracking (v1)",
+      "label": "DEC-007: Vital Sign Velocity Tracking",
       "summary": "Parametric velocity scoring over serial vitals history to catch rapid decompensation before breach.",
       "file": "decisions.md"
     },
     "dec.008": {
       "key": "dec.008",
       "type": "decision",
-      "label": "DEC-008: Future Horizon (v2) Distributed & SLM Architecture",
+      "label": "DEC-008: Future Horizon Distributed & SLM Architecture",
       "summary": "FastAPI FHIR v4, NATS JetStream mesh, fine-tunable local clinical SLM (Gemma-2-2B/Qwen2.5-1.5B), and YAML profiler.",
       "file": "decisions.md"
     },
     "dec.009": {
       "key": "dec.009",
       "type": "decision",
-      "label": "DEC-009: Web & Live Hosting Strategy (v2)",
+      "label": "DEC-009: Web & Live Hosting Strategy",
       "summary": "Streamlit Community Cloud / HuggingFace public live links and on-prem Docker edge appliance recipes.",
+      "file": "decisions.md"
+    },
+    "dec.010": {
+      "key": "dec.010",
+      "type": "decision",
+      "label": "DEC-010: Embedded FastAPI HL7 FHIR v4 Adapter",
+      "summary": "Direct ingestion of Observation/Patient/Bundle resources and RiskAssessment export.",
+      "file": "decisions.md"
+    },
+    "dec.011": {
+      "key": "dec.011",
+      "type": "decision",
+      "label": "DEC-011: SQLite WAL Persistent Queue Repository",
+      "summary": "Multi-client concurrency without external database dependencies via SQLite WAL.",
+      "file": "decisions.md"
+    },
+    "dec.012": {
+      "key": "dec.012",
+      "type": "decision",
+      "label": "DEC-012: Hybrid Neurosymbolic SLM Core",
+      "summary": "SLM free-text entity extraction with deterministic physiological red-line veto stops.",
+      "file": "decisions.md"
+    },
+    "dec.013": {
+      "key": "dec.013",
+      "type": "decision",
+      "label": "DEC-013: Declarative YAML Facility Profile Engine",
+      "summary": "YAML-driven configuration of thresholds, resource criteria, and transfer protocols.",
       "file": "decisions.md"
     },
     "metric.confidence": {
@@ -164,6 +206,16 @@
       "rel": "consumes"
     },
     {
+      "src": "triage.api.fhir",
+      "dst": "triage.models",
+      "rel": "produces"
+    },
+    {
+      "src": "triage.api.fhir",
+      "dst": "triage.engine",
+      "rel": "calls"
+    },
+    {
       "src": "triage.engine",
       "dst": "triage.rules",
       "rel": "calls"
@@ -172,6 +224,11 @@
       "src": "triage.engine",
       "dst": "triage.voi",
       "rel": "calls"
+    },
+    {
+      "src": "triage.engine",
+      "dst": "triage.facility",
+      "rel": "uses"
     },
     {
       "src": "triage.engine",
@@ -232,27 +289,47 @@
       "src": "app",
       "dst": "dec.009",
       "rel": "relates_to"
+    },
+    {
+      "src": "triage.api.fhir",
+      "dst": "dec.010",
+      "rel": "relates_to"
+    },
+    {
+      "src": "triage.queue",
+      "dst": "dec.011",
+      "rel": "relates_to"
+    },
+    {
+      "src": "triage.engine",
+      "dst": "dec.012",
+      "rel": "relates_to"
+    },
+    {
+      "src": "triage.facility",
+      "dst": "dec.013",
+      "rel": "relates_to"
     }
   ],
   "facts": [
     {
-      "fact": "Evaluation latency SLA is strictly under 50ms (deterministic core runs in ~0.9ms in v1).",
-      "source": "architecture.md:14",
+      "fact": "Evaluation latency SLA is strictly under 50ms (deterministic core runs in ~0.9ms in v1/v2).",
+      "source": "architecture.md:52",
       "node": "triage.engine"
     },
     {
       "fact": "Asymmetric loss: Under-triage (ESI 1/2 assigned to 3/4) is 10x worse than over-triage.",
-      "source": "handoff.md:54",
+      "source": "architecture.md:60",
       "node": "triage.engine"
     },
     {
-      "fact": "Safe waiting thresholds: ESI 1 = 0m, ESI 2 = 10m, ESI 3 = 30m, ESI 4 = 60m, ESI 5 = 120m.",
-      "source": "handoff.md:176",
-      "node": "triage.queue"
+      "fact": "Physiological red-lines and medication danger alerts ALWAYS hold veto authority over SLM candidate scores.",
+      "source": "architecture.md:140",
+      "node": "triage.engine"
     },
     {
       "fact": "Active VOI questions trigger whenever epistemic confidence falls below 70%.",
-      "source": "handoff.md:161",
+      "source": "architecture.md:62",
       "node": "triage.voi"
     },
     {

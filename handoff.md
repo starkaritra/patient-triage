@@ -329,31 +329,29 @@ The Streamlit UI is organized into 3 clear clinical workstations:
 
 ---
 
-## 11. Implementation Checklist (v1 Hardening)
+### 11. Implementation Checklist (v1 Completed & v2 Roadmap)
 
-### Step 1: Data Contracts & High-Risk Meds (v1)
-- [ ] Extend `triage/models.py` with `medications: List[str]`, `allergies: List[str]`, `vitals_history: List[Vitals]`, and `pseudo_id`.
-- [ ] Update `triage/rules.py` with high-risk medication alerts (Warfarin/DOACs, insulin, antiplatelets, immunosuppressants).
+### Completed on Branch `v1`:
+- [x] **Data Contracts & High-Risk Meds (DEC-004):** Extended `triage/models.py` with `medications`, `allergies`, `vitals_history`, and `pseudo_id`.
+- [x] **High-Risk Medication Danger Red-Lines:** Added Anticoagulant/DOAC head-trauma and immunocompromised fever alerts to `triage/rules.py`.
+- [x] **Expanded 10-Rule Multi-System VOI Bank (DEC-005):** Expanded `triage/voi.py` covering ACS, Stroke, DVT/PE, Sepsis, Dehydration, Acute Abdomen, and Anaphylaxis.
+- [x] **HIPAA Safe Harbor Audit De-Identification (DEC-006):** Implemented deterministic SHA-256 tokenization (`PT-HASH8`) in `triage/audit.py`.
+- [x] **Vital Sign Velocity Tracking (DEC-007):** Added $\Delta\text{Vitals}$ velocity scoring ($\Delta\text{SBP}$, $\Delta\text{HR}$, $\Delta\text{SpO}_2$) in `triage/queue.py`.
+- [x] **Visual-First Clinical HUD:** Clean, responsive, zero-emoji dashboard with symmetric KPI header cards and collapsible drawers.
 
-### Step 2: Expanded Multi-System VOI Bank (v1)
-- [ ] Expand `triage/voi.py` to 10 acute clinical rules (pediatric dehydration/fontanelle, surgical abdomen, sepsis hypoperfusion, anaphylaxis progression).
-
-### Step 3: HIPAA Safe Harbor Audit De-Identification (v1)
-- [ ] Update `triage/audit.py` with automated deterministic SHA-256 pseudonymization (`PT-HASH8`) at rest in `audit_log.json`.
-
-### Step 4: Vital Sign Velocity Tracking (v1)
-- [ ] Update `triage/queue.py` with $\Delta\text{Vitals}$ velocity scoring ($\Delta\text{SBP}$, $\Delta\text{HR}$, $\Delta\text{SpO}_2$) and rapid decompensation re-ranking.
-
-### Step 5: Clinical HUD & Benchmark Cohort Synchronization (v1)
-- [ ] Update `triage/cohort.py` with medication and serial vitals profiles.
-- [ ] Update `app.py` UI with medication alerts, expanded VOI prompts, vital trend graphs, and de-identified audit view.
+### Active Milestones for Branch `v2`:
+- [ ] **Milestone 1: Declarative Facility Profiles (DEC-013):** Implement `config/facilities/` YAML schema loader (`level1_trauma.yaml`, `rural_critical_access.yaml`) and connect to `RuleRegistry` and `PatientQueue`.
+- [ ] **Milestone 2: Concurrent Multi-Workstation Queue (DEC-011):** Implement `SqliteQueueRepository` with SQLite WAL mode and atomic transaction locking in `triage/queue.py`.
+- [ ] **Milestone 3: HL7 FHIR v4 Ingestion Gateway (DEC-010):** Implement FastAPI router (`triage/api/fhir.py`) with `/Observation`, `/Patient`, and `/RiskAssessment` endpoints.
+- [ ] **Milestone 4: Neurosymbolic Clinical SLM Core (DEC-012):** Implement `LLMTriageEngine` with free-text note parsing, local Ollama/fallback provider, and deterministic safety veto stops.
+- [ ] **Milestone 5: Multi-Facility & Paramedic HUD Workstations:** Add live facility switching and paramedic free-text intake to the Streamlit Clinical HUD.
 
 ---
 
-## 12. Verification & Acceptance Criteria
+## 12. Verification & Acceptance Criteria (v2)
 
-1. **Zero Runtime Dependencies beyond Standard Stack:** Runs cleanly with `pip install streamlit pandas pydantic`.
-2. **Sub-second Execution:** Every triage recommendation renders in $<50\text{ms}$ (actual: $\approx 0.9\text{ms}$).
-3. **Cohort Coverage:** All 20 simulated patients evaluate correctly against their expected ESI band.
-4. **Surge & Breach Visibility:** Toggling 3× Surge immediately elevates waiting breach cases and vital velocity decompensations to the top.
-5. **Audit Integrity & HIPAA Privacy:** Every override and event writes a structured de-identified record to `audit_log.json` with microsecond timestamp, AI prediction, nurse override, and justification text.
+1. **Deterministic Safety Veto Invariant:** Physiological red-lines and high-risk medication stops ALWAYS override and veto any SLM candidate tier.
+2. **FHIR Interoperability Compliance:** Ingests standard HL7 FHIR v4 JSON Observation/Patient bundles and exports compliant `RiskAssessment` resources.
+3. **Multi-Workstation Concurrency:** Multiple browser tabs/tablets concurrently updating queue state without lockups or state loss (backed by SQLite WAL).
+4. **Sub-second Execution:** Latency strictly $<50\text{ms}$ for deterministic core and $<100\text{ms}$ for local SLM entity extraction.
+5. **HIPAA Safe Harbor Compliance:** Zero plaintext patient full names persisted in audit ledgers at rest.

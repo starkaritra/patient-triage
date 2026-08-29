@@ -1,39 +1,57 @@
-# PatientTriage.ai — System Architecture & Technical Specification
+# PatientTriage.ai — Technical Specification & System Architecture (v2)
 
-## 1. System Topology & Distributed Blueprint
+## 1. System Overview & Architectural Vision
+
+PatientTriage.ai is an explainable, safety-biased clinical decision-support triage system designed for high-acuity emergency departments, rural critical access facilities, and distributed hospital networks.
+
+The system combines **deterministic physiological safety gates** (calibrated against PEWS, NEWS2, and qSOFA), **active Value-of-Information (VOI) entropy reduction**, **serial vital velocity deterioration tracking**, and **neurosymbolic Clinical SLM entity extraction** within an air-gapped, zero-cloud-leak architecture.
 
 ```
-                     +----------------------------------------------+
-                     |           Clinical Client Fleet              |
-                     |  (Nurse Workstations, Tablets, Intake HUD)   |
-                     +----------------------------------------------+
-                                            │
-                                            ▼ (REST / UI State / WebSocket)
-+───────────────────────────────────────────────────────────────────────────────────────────+
-|                                 Application / Service Layer                               |
-|                                                                                           |
-|  +-----------------------+      +-------------------+      +---------------------------+  |
-|  |   BaseTriageEngine    |      |    VOI Engine     |      |    Deterioration Radar    |  |
-|  |  (Algorithmic / ML)   |◄────►|   (Active Q&A)    |◄────►|   (Queue & Surge Mgmt)    |  |
-|  +-----------┬-----------+      +---------┬---------+      +-------------┬-------------+  |
-|              │                            │                              │                |
-+──────────────┼────────────────────────────┼──────────────────────────────┼────────────────+
-               ▼                            ▼                              ▼
-+───────────────────────────────────────────────────────────────────────────────────────────+
-|                                   Repository Abstraction                                  |
-|                                                                                           |
-|              +────────────────────────────+   +────────────────────────────+              |
-|              |      QueueRepository       |   |      AuditRepository       |              |
-|              +──────────────┬─────────────+   +──────────────┬─────────────+              |
-+─────────────────────────────┼────────────────────────────────┼────────────────────────────+
-                              │                                │
-                ┌─────────────┴─────────────┐    ┌─────────────┴─────────────┐
-                ▼                           ▼    ▼                           ▼
-        [In-Memory Store]             [NATS JetStream] [Local JSON/WAL]   [PostgreSQL DB]
-      (Local Dev / <1µs)               (Prod Queue)   (Local Dev)       (Audit Ledger)
+                              [ Emergency Department Clients ]
+                 (Paramedic Run-Sheets, Nurse Workstations, Bedside Vitals, Mobile Tablets)
+                                              │
+                         ┌────────────────────┴────────────────────┐
+                         ▼ (REST / FHIR v4)                        ▼ (Web State / WS)
+              ┌──────────────────────┐                  ┌──────────────────────┐
+              │   FastAPI Ingestion  │                  │ Streamlit / Web HUD  │
+              │     (FHIR Gateway)   │                  │  (Multi-Workstation) │
+              └──────────┬───────────┘                  └──────────┬───────────┘
+                         │                                         │
+                         └────────────────────┬────────────────────┘
+                                              ▼
++─────────────────────────────────────────────────────────────────────────────────────────────+
+|                                    Domain Engine Layer                                      |
+|                                                                                             |
+|   ┌───────────────────────────┐    ┌───────────────────────────┐    ┌───────────────────┐   |
+|   │     BaseTriageEngine      │    │         VOIEngine         │    │ PatientQueueRadar │   |
+|   │ (Algorithmic / Hybrid SLM)│◄──►│  (10-Rule Entropy Bank)   │◄──►│ (Vital Velocity)  │   |
+|   └─────────────┬─────────────┘    └─────────────┬─────────────┘    └─────────┬─────────┘   |
+|                 │                                │                            │             |
+|                 ▼                                ▼                            ▼             |
+|   ┌───────────────────────────┐    ┌───────────────────────────┐    ┌───────────────────┐   |
+|   │    Physiological Red-Line │    │  Facility Profile Engine  │    │ Dynamic Fast-Track│   |
+|   │   (PEWS / NEWS2 / qSOFA)  │    │  (YAML Facility Adapters) │    │  (Surge Diversion)│   |
+|   └───────────────────────────┘    └───────────────────────────┘    └───────────────────┘   |
++─────────────────────────────────────────────┬───────────────────────────────────────────────+
+                                              │
+                                              ▼
++─────────────────────────────────────────────────────────────────────────────────────────────+
+|                                  Persistence & State Layer                                  |
+|                                                                                             |
+|        ┌───────────────────────────────────┐    ┌───────────────────────────────────┐       |
+|        │      QueueRepository Contract     │    │      AuditRepository Contract     │       |
+|        └─────────────────┬─────────────────┘    └─────────────────┬─────────────────┘       |
+|                          │                                        │                         |
+|             ┌────────────┴────────────┐              ┌────────────┴────────────┐            |
+|             ▼                         ▼              ▼                         ▼            |
+|   [SqliteQueueRepository]     [NATS JetStream] [FileAuditRepository]    [PostgreSQL DB]     |
+|     (WAL Mode / Multi-Tab)     (Enterprise)     (SHA-256 De-identified)  (Enterprise BAA)   |
++─────────────────────────────────────────────────────────────────────────────────────────────+
 ```
 
-### Component Flow Diagram (Mermaid)
+---
+
+## 2. End-to-End Component Flowchart (Mermaid)
 
 ```mermaid
 flowchart TD
@@ -43,155 +61,232 @@ flowchart TD
   classDef metric fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
   classDef decision fill:#fbe9e7,stroke:#d84315,stroke-width:2px;
 
-  app["Streamlit Clinical HUD<br/><small>(service)</small>"]
-  triage_models["Clinical Data Contracts (v1: Meds & History)<br/><small>(data)</small>"]
-  triage_rules["Physiological Red-Lines & High-Risk Meds<br/><small>(component)</small>"]
-  triage_engine["Base & Algorithmic Triage Engine<br/><small>(component)</small>"]
-  triage_voi["Expanded Active VOI Engine (10 Rules)<br/><small>(component)</small>"]
-  triage_queue["Dynamic Deterioration & Vital Velocity Radar<br/><small>(component)</small>"]
-  triage_audit["HIPAA De-Identified Audit Ledger<br/><small>(component)</small>"]
-  triage_cohort["20-Patient Multi-Age Benchmark Cohort<br/><small>(data)</small>"]
+  fhir_api["FastAPI FHIR v4 Gateway<br/><small>(service: /Observation, /Patient)</small>"]
+  app["Clinical Decision Support HUD<br/><small>(service: Streamlit/Web)</small>"]
+  
+  triage_models["Clinical Data Contracts<br/><small>(data: Pydantic v2 Models)</small>"]
+  facility_profile["Facility Profile Engine<br/><small>(component: YAML Schema)</small>"]
+  
+  subgraph Decision_Core["Neurosymbolic Decision Core"]
+    slm_extractor["Clinical SLM Entity Extractor<br/><small>(component: Gemma/Qwen/Fallback)</small>"]
+    triage_engine["Algorithmic Triage Engine<br/><small>(component: BaseTriageEngine)</small>"]
+    triage_rules["Physiological Red-Lines & Meds<br/><small>(component: RuleRegistry)</small>"]
+    triage_voi["Expanded VOI Engine (10 Rules)<br/><small>(component: Active Q&A)</small>"]
+  end
 
-  dec_004["DEC-004: Graded History & Med Alerts<br/><small>(decision)</small>"]
-  dec_005["DEC-005: Multi-System VOI Bank<br/><small>(decision)</small>"]
-  dec_006["DEC-006: HIPAA Pseudonymization at Rest<br/><small>(decision)</small>"]
-  dec_007["DEC-007: Vital Sign Velocity Tracking<br/><small>(decision)</small>"]
-  dec_008["DEC-008: Distributed & SLM Horizon<br/><small>(decision)</small>"]
-  dec_009["DEC-009: Web & Live Hosting Strategy<br/><small>(decision)</small>"]
+  subgraph State_Management["Concurrency & Audit State"]
+    sqlite_queue["Concurrent SQLite WAL Queue<br/><small>(component: SqliteQueueRepository)</small>"]
+    hipaa_audit["HIPAA Safe Harbor Ledger<br/><small>(component: AuditLogger SHA-256)</small>"]
+  end
 
-  metric_confidence["Confidence Formula (0.0–1.0)<br/><small>(metric)</small>"]
-  metric_priority_score["Dynamic Priority & Velocity Score<br/><small>(metric)</small>"]
+  dec_008["DEC-008: Distributed Horizon<br/><small>(decision)</small>"]
+  dec_009["DEC-009: Web Hosting Strategy<br/><small>(decision)</small>"]
+  dec_010["DEC-010: FHIR v4 Ingestion<br/><small>(decision)</small>"]
+  dec_011["DEC-011: SQLite WAL Persistence<br/><small>(decision)</small>"]
+  dec_012["DEC-012: Hybrid SLM Neurosymbolic Core<br/><small>(decision)</small>"]
+  dec_013["DEC-013: Declarative Facility Profiler<br/><small>(decision)</small>"]
+
+  fhir_api -->|parses to| triage_models
+  app -->|consumes| triage_models
+  slm_extractor -->|populates| triage_models
+
+  triage_engine -->|evaluates| triage_rules
+  triage_engine -->|queries| triage_voi
+  triage_engine -->|reads facility limits| facility_profile
+  triage_engine -->|veto gate over| slm_extractor
 
   app -->|calls| triage_engine
-  app -->|uses| triage_queue
-  app -->|uses| triage_audit
-  app -->|consumes| triage_cohort
+  app -->|reads/writes| sqlite_queue
+  app -->|appends| hipaa_audit
 
-  triage_engine -->|calls| triage_rules
-  triage_engine -->|calls| triage_voi
-  triage_engine -->|implements| triage_models
-  triage_queue -->|consumes| triage_models
-  triage_audit -->|consumes| triage_models
-  triage_cohort -->|produces| triage_models
+  sqlite_queue -->|tracks velocity| triage_models
+  hipaa_audit -->|de-identifies| triage_models
 
-  triage_engine -->|produces| metric_confidence
-  triage_queue -->|produces| metric_priority_score
-
-  triage_models -->|relates_to| dec_004
-  triage_voi -->|relates_to| dec_005
-  triage_audit -->|relates_to| dec_006
-  triage_queue -->|relates_to| dec_007
-  triage_engine -->|relates_to| dec_008
-  app -->|relates_to| dec_009
-
-  class app service;
+  class fhir_api,app service;
   class triage_models data;
-  class triage_rules component;
-  class triage_engine component;
-  class triage_voi component;
-  class triage_queue component;
-  class triage_audit component;
-  class triage_cohort data;
-  class dec_004 decision;
-  class dec_005 decision;
-  class dec_006 decision;
-  class dec_007 decision;
-  class dec_008 decision;
-  class dec_009 decision;
-  class metric_confidence metric;
-  class metric_priority_score metric;
+  class facility_profile,slm_extractor,triage_engine,triage_rules,triage_voi,sqlite_queue,hipaa_audit component;
+  class dec_008,dec_009,dec_010,dec_011,dec_012,dec_013 decision;
 ```
 
 ---
 
-## 2. Latency Budget & Asymmetric Safety Principles
+## 3. Detailed Technical Specifications for the 4 Pillars
 
-### 2.1 Latency Budget SLA
-| Pipeline Stage | Budget Target | Measured v1 Baseline |
-| :--- | :--- | :--- |
-| **Intake Parsing & Validation** | $<5\text{ms}$ | $\approx 0.1\text{ms}$ (Pydantic v2) |
-| **Physiological & Medication Rules** | $<10\text{ms}$ | $\approx 0.2\text{ms}$ (Declarative Registry) |
-| **Expanded VOI Entropy Check (10 Rules)** | $<15\text{ms}$ | $\approx 0.3\text{ms}$ |
-| **Vital Velocity & Queue Re-ranking** | $<20\text{ms}$ | $\approx 0.3\text{ms}$ (20-patient queue) |
-| **Total Intake-to-Score SLA** | **$<50\text{ms}$** | **$\approx 0.9\text{ms}$** |
+### Pillar 1: HL7 FHIR v4 Ingestion Gateway ([`triage/api/fhir.py`](file:///C:/Code/patient-triage/triage/api/fhir.py))
 
-### 2.2 Asymmetric Clinical Safety Bias
-Missing an emergent patient (**under-triage**) carries catastrophic risk compared to over-prioritizing a stable patient (**over-triage**):
-$$\text{Loss}(\text{True ESI } 1/2 \to \text{Assigned ESI } 3/4) \gg \text{Loss}(\text{True ESI } 4 \to \text{Assigned ESI } 3)$$
+The FHIR v4 subsystem provides standard RESTful endpoints for bedside monitors, telemetry devices, and EHR integrations.
 
-- **Safety Bias Invariant:** Whenever confidence falls below $70\%$ on ambiguous or high-risk presentations, the engine automatically escalates urgency by $+1$ tier.
+#### Ingestion & Transformation Flow:
+1. **`POST /fhir/v4/Observation`**: Accepts standard FHIR v4 Observation JSON resources containing LOINC codes:
+   - `8867-4`: Heart rate (bpm)
+   - `8480-6`: Systolic blood pressure (mmHg)
+   - `8462-4`: Diastolic blood pressure (mmHg)
+   - `9279-1`: Respiratory rate (/min)
+   - `2708-6` / `59408-5`: Oxygen saturation SpO2 (%)
+   - `8310-5`: Body temperature (°C)
+2. **`POST /fhir/v4/Patient`**: Ingests patient demographics, DOB (converted to decimal age), active medications, and allergies.
+3. **`POST /fhir/v4/Bundle`**: Ingests complete transaction bundles combining `Patient` and `Observation` entries.
+4. **`GET /fhir/v4/RiskAssessment/{patient_id}`**: Outputs a standard FHIR `RiskAssessment` resource containing:
+   - `prediction.qualitative`: ESI Level (1 through 5).
+   - `prediction.probabilityDecimal`: Calibrated confidence score ($0.00\text{--}1.00$).
+   - `basis`: List of identified physiological red-lines and clinical risk factors.
+
+```json
+{
+  "resourceType": "RiskAssessment",
+  "status": "final",
+  "subject": { "reference": "Patient/PT-4A9B1C88" },
+  "occurrenceDateTime": "2026-08-30T02:00:00Z",
+  "prediction": [
+    {
+      "outcome": { "text": "Emergency Severity Index Tier 2" },
+      "probabilityDecimal": 0.88,
+      "qualitativeRisk": { "coding": [{ "system": "http://hl7.org/fhir/sid/esi", "code": "2", "display": "Emergent" }] }
+    }
+  ],
+  "note": [{ "text": "Triggered by High-Risk Medication Alert: Warfarin on Head Trauma." }]
+}
+```
 
 ---
 
-## 3. Mathematical Models & Queue Dynamics (v1 Refinements)
+### Pillar 2: Distributed State Mesh & SQLite WAL Concurrency ([`triage/queue.py`](file:///C:/Code/patient-triage/triage/queue.py))
 
-### 3.1 Graded Epistemic Confidence Formula
-$$\text{Confidence} = 1.0 - P_{\text{data}} - P_{\text{vitals}} - P_{\text{ambiguity}} - P_{\text{age\_risk}}$$
-- **$P_{\text{data}}$ (Graded History Penalty):**
-  - $0.15$ if zero history and zero medications.
-  - $0.08$ if partial history (only allergies or incomplete notes).
-  - $0.00$ for comprehensive clinical history with medication reconciliation.
-- **$P_{\text{vitals}}$:** $0.10$ for borderline physiological parameters.
-- **$P_{\text{ambiguity}}$:** $0.20$ for high-entropy differential complaints (e.g. non-specific fatigue, dizziness, acute abdominal pain).
-- **$P_{\text{age\_risk}}$:** $0.10$ for extreme age brackets (infants $<1$ yo, geriatrics $>75$ yo).
+To enable reliable multi-workstation concurrency without external database setup friction, `v2` introduces `SqliteQueueRepository`.
 
-### 3.2 Dynamic Queue Priority with Vital Velocity ($\Delta\text{Vitals}$)
-$$\text{Priority Score} = (6 - \text{ESI}) \times 100 + \left(\frac{\text{Wait Time}}{\text{Safe Threshold}}\right) \times 50 + \Delta \text{Vitals Penalty} + \text{Pain Penalty}$$
-
-**Vital Velocity Penalty ($\Delta\text{Vitals}$):**
-$$\Delta \text{Vitals Penalty} = 1.5 \times \Delta\text{HR} + 2.5 \times (-\Delta\text{SBP}) + 5.0 \times (-\Delta\text{SpO}_2)$$
+#### Storage & Concurrency Invariants:
+1. **Write-Ahead Logging (WAL Mode):** `PRAGMA journal_mode=WAL;` and `PRAGMA synchronous=NORMAL;` allow concurrent reads from multiple nurse tablets while writes commit without thread lock contention.
+2. **ACID Transaction Gating:** Priority scores, wait times, and vital history snapshots are updated within explicit atomic transactions.
+3. **Multi-Parametric Vital Velocity Calculation:**
+   $$\Delta \text{Vitals Penalty} = 1.5 \times \Delta\text{HR} + 2.5 \times (-\Delta\text{SBP}) + 5.0 \times (-\Delta\text{SpO}_2)$$
+4. **Drop-in Enterprise Upgrade Path:**
+   - Single-node / Edge Appliance: `SqliteQueueRepository` (Zero ops, built-in SQLite).
+   - Clustered Enterprise Network: Set `QUEUE_BACKEND=nats` to use `NATSQueueRepository` over a NATS JetStream message bus.
 
 ---
 
-## 4. Future Horizon (v2) Strategic Architecture
+### Pillar 3: Neurosymbolic Clinical SLM Core ([`triage/engine.py`](file:///C:/Code/patient-triage/triage/engine.py))
 
-| Pillar | Focus Area | Chosen v2 Standard | Rationale & Trade-offs |
+`LLMTriageEngine` integrates an open-weights, medically aligned Small Language Model (<3B parameters, e.g. **Gemma-2-2B-IT** or **Qwen2.5-1.5B**) with deterministic physiological safety veto stops.
+
+#### Neurosymbolic Execution Flow:
+
+```
+[ Unstructured Narrative / Paramedic Run-Sheet ]
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 1. SLM Entity Extractor (Gemma-2-2B / Local Fallback)       │
+│    - Extracts: Vitals, Chief Complaint, Meds, Allergies     │
+│    - Classifies: Candidate ESI tier + Clinical Nuances      │
+└────────────────────────────┬────────────────────────────────┘
+                             │ (Structured Pydantic Contract)
+                             ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 2. Deterministic Physiological Safety Stop (RuleRegistry)   │
+│    - Evaluates: PEWS, NEWS2, qSOFA, Med Danger Red-Lines    │
+│    - Safety Invariant: Hard physiological red-lines         │
+│      ALWAYS OVERRIDE and VETO the SLM output.               │
+└────────────────────────────┬────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 3. Active VOI Assistant & Confidence Calibration            │
+│    - Triggers targeted query if confidence < 70%            │
+│    - Asymmetric loss escalation on residual ambiguity       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Pluggable SLM Provider Architecture:
+- **Provider 1 (Local Ollama / llama.cpp):** Calls `http://localhost:11434/api/generate` with quantized GGUF weights.
+- **Provider 2 (HuggingFace Transformers):** Local in-process inference on CUDA / MPS / CPU.
+- **Provider 3 (Deterministic Heuristic Fallback):** Zero-install regex and semantic parser when no local LLM runner is installed.
+
+---
+
+### Pillar 4: Declarative Facility Profiler ([`config/facilities/*.yaml`](file:///C:/Code/patient-triage/config/facilities/))
+
+Different clinical environments operate under different resource constraints and safe-wait thresholds. `v2` introduces declarative facility profiles.
+
+#### Example: Level-1 Trauma Center vs Rural Critical Access Clinic
+
+```yaml
+# config/facilities/level1_trauma.yaml
+facility_id: "FAC-LVL1-TRAUMA"
+facility_name: "Metropolitan Level 1 Trauma Center"
+safe_wait_thresholds_minutes:
+  esi_1: 0
+  esi_2: 10
+  esi_3: 20    # Aggressive threshold due to high volume
+  esi_4: 45
+  esi_5: 90
+resource_capabilities:
+  has_ct_scanner: true
+  has_mri: true
+  has_cath_lab: true
+  has_pediatric_icu: true
+surge_fast_track_enabled: true
+surge_trigger_occupancy_pct: 85.0
+```
+
+```yaml
+# config/facilities/rural_critical_access.yaml
+facility_id: "FAC-RURAL-01"
+facility_name: "Pine Creek Critical Access Hospital"
+safe_wait_thresholds_minutes:
+  esi_1: 0
+  esi_2: 10
+  esi_3: 30
+  esi_4: 60
+  esi_5: 120
+resource_capabilities:
+  has_ct_scanner: false   # Remote teleradiology plain X-ray only
+  has_mri: false
+  has_cath_lab: false
+  has_pediatric_icu: false
+auto_transfer_protocols:
+  escalate_uncontrolled_stroke_to_esi_1: true
+  escalate_pediatric_hypoxemia_for_airlift: true
+```
+
+---
+
+## 4. Comprehensive Upgrade & Swap Path Matrix
+
+| Subsystem | v2 Reference Build (Zero-Friction) | Pilot Edge Appliance | Enterprise Cloud Production |
 | :--- | :--- | :--- | :--- |
-| **Pillar 1** | **EHR Interoperability** | **Embedded FastAPI FHIR v4 Gateway** | Exposes `/Observation` and `/Patient` endpoints; validates directly into Pydantic models for live bedside monitor streaming. |
-| **Pillar 2** | **Distributed Mesh** | **NATS JetStream + SQLite/WAL** | Minimal friction adoption (single binary, zero external DB required); scales to millions of messages/sec across multi-nurse tablet fleets. |
-| **Pillar 3** | **Clinical SLM Core** | **Gemma-2-2B / Qwen2.5-1.5B (LoRA)** | Medically aligned, sub-3B parameter model runnable 100% locally on clinician CPU/modest GPU; fine-tunable on local hospital discharge/triage datasets. |
-| **Pillar 4** | **Facility Profiler** | **Declarative YAML Facility Schema** | Dynamic rules adapting resource definitions and safe wait times for Level-1 Trauma vs Rural Access clinics. |
+| **FHIR Gateway** | Embedded FastAPI router ([`triage/api/fhir.py`](file:///C:/Code/patient-triage/triage/api/fhir.py)) | Standalone FastAPI Docker Container | Azure Health Data / AWS HealthLake / Epic SMART |
+| **Queue State** | SQLite WAL (`SqliteQueueRepository`) | SQLite WAL / Local NATS JetStream node | Clustered NATS JetStream / Amazon ElastiCache Redis |
+| **Clinical Intelligence** | Pluggable `LLMTriageEngine` (Ollama/Fallback) | Gemma-2-2B Q4_K_M on local CPU/GPU | vLLM cluster with hospital-trained LoRA adapter |
+| **Audit Ledger** | `FileAuditRepository` (SHA-256 tokens) | Encrypted local SQLite/JSON append ledger | Managed PostgreSQL with signed HIPAA BAA |
+| **UI Workstation** | Streamlit HUD (Responsive, No Emojis) | Electron-wrapped Local Nurse HUD | React / Next.js Microfrontend on EHR EHR-Launch |
 
 ---
 
-## 5. Web & Cloud Hosting Topologies (DEC-009)
+## 5. Mathematical Formulations & Safety Invariants
 
-```
-[ Developer / Stakeholder Web Client ]
-                 │
-                 ▼ (HTTPS / TLS 1.3)
-┌─────────────────────────────────────────────────────────────┐
-│ 1. Public Live Demo: Streamlit Community Cloud / HuggingFace │  --> Free, persistent public URL, automated CI/CD from GitHub
-└─────────────────────────────────────────────────────────────┘
+### 5.1 Calibrated Confidence Metric
+$$\text{Confidence} = 1.0 - P_{\text{data}} - P_{\text{vitals}} - P_{\text{ambiguity}} - P_{\text{age\_risk}}$$
+- **$P_{\text{data}}$:** $0.15$ for zero history, $0.08$ for partial records, $0.00$ for reconciled medications.
+- **$P_{\text{vitals}}$:** $0.10$ for borderline physiological parameters.
+- **$P_{\text{ambiguity}}$:** $0.20$ for high-entropy differential complaints.
+- **$P_{\text{age\_risk}}$:** $0.10$ for vulnerable age groups ($<1$ yo, $>75$ yo).
 
-[ Hospital Nurse Tablet / Workstation Fleet ]
-                 │
-                 ▼ (Local Hospital LAN / Sub-millisecond)
-┌─────────────────────────────────────────────────────────────┐
-│ 2. Hospital Pilot: On-Prem Edge Node (Docker Compose / K3s) │  --> 100% Air-gapped, zero cloud egress, HIPAA Safe Harbor
-└─────────────────────────────────────────────────────────────┘
+### 5.2 Dynamic Queue Priority Invariant
+$$\text{Priority Score} = (6 - \text{ESI}) \times 100 + \left(\frac{\text{Wait Time}}{\text{Safe Threshold}_{\text{facility}}}\right) \times 50 + \Delta \text{Vitals Penalty} + \text{Pain Penalty}$$
 
-[ Regional Multi-Hospital Network ]
-                 │
-                 ▼ (IPSec VPN / DirectConnect)
-┌─────────────────────────────────────────────────────────────┐
-│ 3. Enterprise Production: HIPAA Cloud VPC (AWS/GCP/Azure)   │  --> Multi-facility clustering, NATS JetStream, Managed Postgres
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Hosting Options Breakdown:
-1. **Public Live Demonstration Hosting (Streamlit Community Cloud / Hugging Face Spaces):**
-   - Direct connection to GitHub repository (`starkaritra/patient-triage`).
-   - Serves an immediate public HTTPS URL (e.g. `https://patient-triage.streamlit.app`) with continuous deployment on git push.
-2. **On-Premise Hospital Edge Node:**
-   - Single-node Docker deployment (`docker-compose.yml`) running directly on hospital LAN.
-   - Guaranteed $<1\text{ms}$ response times and zero clinical data egress to external networks.
-3. **Enterprise HIPAA Private Cloud VPC:**
-   - Managed Kubernetes (EKS/GKE) with signed Business Associate Agreement (BAA) for central health system coordination.
+### 5.3 Asymmetric Safety Invariant
+$$\text{Assigned ESI} = \begin{cases} \min(\text{ESI}_{\text{rule}}, \text{ESI}_{\text{SLM}}) & \text{if Rule Hit = True} \\ \text{ESI}_{\text{base}} - 1 & \text{if Confidence} < 0.70 \text{ and ESI} > 2 \\ \text{ESI}_{\text{base}} & \text{otherwise} \end{cases}$$
 
 ---
 
-## 6. Regulatory & Audit Guarantees
-1. **HIPAA Safe Harbor De-Identification:** Patient names are never written plaintext to disk; audit logs store deterministic SHA-256 tokens (`PT-HASH8`) with age brackets only.
-2. **Advisory Decision Support:** Recommendations never autonomously commit diagnoses or medical orders (aligned with FDA CDS / EU MDR Annex VIII Rule 11).
-3. **Mandatory Override Rationale:** Clinician overrides enforce a mandatory clinical justification text string before persisting to `audit_log.json`.
+## 6. Web Hosting & Live Deployment Topologies (DEC-009)
+
+1. **Public Web Demonstration (Streamlit Community Cloud / Hugging Face Spaces):**
+   - Connects to GitHub repository (`starkaritra/patient-triage`).
+   - Serves an instant, permanent public URL (e.g. `https://patient-triage.streamlit.app`) with continuous deployment.
+2. **Hospital Pilot Edge Node (Air-Gapped LAN):**
+   - Single-node Docker Compose stack running on hospital LAN.
+   - Guaranteed $<1\text{ms}$ latency, zero cloud egress, and 100% HIPAA Safe Harbor compliance.
+3. **Enterprise HIPAA Cloud VPC:**
+   - Multi-zone Kubernetes deployment with signed Business Associate Agreement (BAA) and IPSec VPN tunnels to hospital EHRs.

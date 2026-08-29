@@ -95,10 +95,10 @@
 
 ## [DEC-008] Future Horizon (v2) Distributed Systems & Clinical SLM Architecture
 - Date: 2026-08-30
-- Status: proposed (target: v2)
+- Status: accepted
 - Context: Planning the production evolution across interoperability, distributed multi-nurse concurrency, local clinical intelligence, and multi-hospital customization.
-- Decisions & Chosen Options:
-  1. **Pillar 1 (Interoperability):** Embedded FastAPI FHIR v4 Listener (`/Observation`, `/Patient`) for real-time bedside monitor streaming.
+- Decisions:
+  1. **Pillar 1 (Interoperability):** Embedded FastAPI FHIR v4 Listener (`/Observation`, `/Patient`, `/Bundle`) for real-time bedside monitor streaming.
   2. **Pillar 2 (Distributed Mesh):** NATS JetStream mesh with SQLite/WAL fallback for zero-ops local execution scaling to horizontal multi-nurse clusters with sub-millisecond pub/sub.
   3. **Pillar 3 (Clinical SLM):** Medically aligned Small Language Model (<3B parameters, e.g. Gemma-2-2B-IT or Qwen2.5-1.5B) fine-tunable locally via QLoRA on local hospital records for unstructured triage note entity extraction.
   4. **Pillar 4 (Facility Profiler):** Declarative YAML facility configuration schema (`config/facilities/*.yaml`) adapting triage rules between Rural Critical Access clinics and Level-1 Trauma centers.
@@ -109,13 +109,44 @@
 - Date: 2026-08-30
 - Status: accepted
 - Context: Stakeholders, evaluators, and clinical pilots require an accessible live public HTTPS URL rather than running exclusively on `localhost:8501`.
-- Options considered:
-  - Option A: **Streamlit Community Cloud (`share.streamlit.io`)** — 1-click zero-cost hosting linked directly to GitHub branch (`v1` or `v2`), auto-deploys on push, provides a permanent clean public link (`https://patient-triage.streamlit.app`).
-  - Option B: **Hugging Face Spaces (Streamlit SDK)** — High AI/ML community visibility, supports free CPU tier or optional hardware upgrades, public web embedding.
-  - Option C: **Render / Fly.io Container PaaS** — Full container control with custom domain, automated health checks, and WebSocket reliability.
-  - Option D: **Cloudflare Tunnel / LocalTunnel (Instant Live Link)** — Instant HTTPS tunnel exposing the local development instance for immediate real-time review.
 - Decision:
   - **Primary Public Live Web Demo:** Streamlit Community Cloud (free, persistent URL, automatic CD from GitHub `v1`/`v2` branch) with Hugging Face Spaces as secondary mirror.
   - **Hospital Pilot Deployments:** Single-node Docker Edge Appliance on local hospital LAN.
   - **Enterprise Production:** HIPAA-compliant private cloud VPC / On-Prem Kubernetes cluster.
 - Rationale: Maximizes stakeholder accessibility for live interactive reviews with zero operational hosting cost while preserving air-gapped on-premise recipes for actual hospital clinical pilots.
+
+---
+
+## [DEC-010] Embedded FastAPI HL7 FHIR v4 Adapter (v2 Pillar 1)
+- Date: 2026-08-30
+- Status: accepted
+- Context: Bedside telemetry devices, emergency medical records (Epic, Cerner), and paramedic tablet systems output standard HL7 FHIR JSON payloads with LOINC/SNOMED codes.
+- Decision: Implement an embedded FastAPI router ([`triage/api/fhir.py`](file:///C:/Code/patient-triage/triage/api/fhir.py)) accepting FHIR `Observation`, `Patient`, and `Bundle` resources and exporting `RiskAssessment` resources.
+- Rationale: Provides direct EHR compatibility without requiring an intermediate external conversion service.
+
+---
+
+## [DEC-011] SQLite Write-Ahead Logging (WAL) Persistent Queue Repository (v2 Pillar 2)
+- Date: 2026-08-30
+- Status: accepted
+- Context: Multi-workstation browser sessions and nurse tablets sharing queue state require persistence and ACID concurrency without mandatory Redis/Postgres server installation.
+- Decision: Implement `SqliteQueueRepository` utilizing `PRAGMA journal_mode=WAL;` and `PRAGMA synchronous=NORMAL;` with atomic transaction gating.
+- Rationale: Guarantees zero-ops out-of-the-box multi-tab concurrency while enabling seamless swap to clustered NATS JetStream or Redis in enterprise deployments.
+
+---
+
+## [DEC-012] Hybrid Neurosymbolic Clinical SLM Core with Deterministic Red-Line Veto (v2 Pillar 3)
+- Date: 2026-08-30
+- Status: accepted
+- Context: Emergency paramedic notes and triage narratives arrive as unstructured free-text ("68yo M diaphoretic, gripping chest, radiating to jaw, pulse 110, BP 155/90..."). Pure LLMs risk hallucination, while pure keyword regex misses linguistic nuance.
+- Decision: Implement `LLMTriageEngine` where a local, lightweight SLM (Gemma-2-2B / Qwen2.5-1.5B / Ollama / Fallback) parses unstructured narratives into structured entities, but the deterministic `RuleRegistry` ALWAYS holds hard safety veto authority.
+- Rationale: Combines modern natural language comprehension with strict medical safety guarantees.
+
+---
+
+## [DEC-013] Declarative YAML Facility Profile Engine (v2 Pillar 4)
+- Date: 2026-08-30
+- Status: accepted
+- Context: A Level-1 Metropolitan Trauma Center (with 24/7 CT, MRI, Cath lab, and heavy bed competition) requires different safe-wait thresholds and resource criteria than a Rural Critical Access Hospital (plain X-ray only, immediate transfer protocols).
+- Decision: Implement a declarative facility loader reading YAML profiles from `config/facilities/*.yaml`.
+- Rationale: Decouples emergency department configuration from core algorithm code, allowing multi-facility customization via simple YAML files.
