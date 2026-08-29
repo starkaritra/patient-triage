@@ -317,6 +317,16 @@ The Streamlit UI is organized into 3 clear clinical workstations:
 3. **Pillar 3: Local Med-Aligned SLM Core (`LLMTriageEngine`):** Sub-3B parameter open-weights model (e.g. Gemma-2-2B / Qwen2.5-1.5B) fine-tunable on local hospital triage records via QLoRA for free-text paramedic run-sheet entity extraction without cloud leaks.
 4. **Pillar 4: Facility Configuration Profiler:** Declarative YAML hospital profile schema adapting safe wait times and specialty triage paths between Rural Critical Access clinics and Level-1 Trauma centers.
 
+### 10.2 Web & Cloud Deployment Guide (DEC-009)
+1. **Live Public Web Hosting (Streamlit Community Cloud):**
+   - Connect GitHub repo `starkaritra/patient-triage` at `https://share.streamlit.io`.
+   - Branch: `v1` or `v2`. Main file path: `app.py`.
+   - Generates a permanent public link (`https://patient-triage.streamlit.app`) with automatic redeployment on git push.
+2. **Secondary Web Mirror (Hugging Face Spaces):**
+   - Create Space with Streamlit SDK and sync repo.
+3. **Hospital Pilot Edge Node:**
+   - Single-node Docker deployment on hospital LAN (zero cloud leaks, HIPAA compliant).
+
 ---
 
 ## 11. Implementation Checklist (v1 Hardening)

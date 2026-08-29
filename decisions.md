@@ -102,3 +102,20 @@
   2. **Pillar 2 (Distributed Mesh):** NATS JetStream mesh with SQLite/WAL fallback for zero-ops local execution scaling to horizontal multi-nurse clusters with sub-millisecond pub/sub.
   3. **Pillar 3 (Clinical SLM):** Medically aligned Small Language Model (<3B parameters, e.g. Gemma-2-2B-IT or Qwen2.5-1.5B) fine-tunable locally via QLoRA on local hospital records for unstructured triage note entity extraction.
   4. **Pillar 4 (Facility Profiler):** Declarative YAML facility configuration schema (`config/facilities/*.yaml`) adapting triage rules between Rural Critical Access clinics and Level-1 Trauma centers.
+
+---
+
+## [DEC-009] Web & Cloud Hosting Strategy for Live Demonstrations and Hospital Operations (v2)
+- Date: 2026-08-30
+- Status: accepted
+- Context: Stakeholders, evaluators, and clinical pilots require an accessible live public HTTPS URL rather than running exclusively on `localhost:8501`.
+- Options considered:
+  - Option A: **Streamlit Community Cloud (`share.streamlit.io`)** — 1-click zero-cost hosting linked directly to GitHub branch (`v1` or `v2`), auto-deploys on push, provides a permanent clean public link (`https://patient-triage.streamlit.app`).
+  - Option B: **Hugging Face Spaces (Streamlit SDK)** — High AI/ML community visibility, supports free CPU tier or optional hardware upgrades, public web embedding.
+  - Option C: **Render / Fly.io Container PaaS** — Full container control with custom domain, automated health checks, and WebSocket reliability.
+  - Option D: **Cloudflare Tunnel / LocalTunnel (Instant Live Link)** — Instant HTTPS tunnel exposing the local development instance for immediate real-time review.
+- Decision:
+  - **Primary Public Live Web Demo:** Streamlit Community Cloud (free, persistent URL, automatic CD from GitHub `v1`/`v2` branch) with Hugging Face Spaces as secondary mirror.
+  - **Hospital Pilot Deployments:** Single-node Docker Edge Appliance on local hospital LAN.
+  - **Enterprise Production:** HIPAA-compliant private cloud VPC / On-Prem Kubernetes cluster.
+- Rationale: Maximizes stakeholder accessibility for live interactive reviews with zero operational hosting cost while preserving air-gapped on-premise recipes for actual hospital clinical pilots.

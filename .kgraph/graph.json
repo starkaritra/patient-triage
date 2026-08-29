@@ -120,6 +120,13 @@
       "summary": "FastAPI FHIR v4, NATS JetStream mesh, fine-tunable local clinical SLM (Gemma-2-2B/Qwen2.5-1.5B), and YAML profiler.",
       "file": "decisions.md"
     },
+    "dec.009": {
+      "key": "dec.009",
+      "type": "decision",
+      "label": "DEC-009: Web & Live Hosting Strategy (v2)",
+      "summary": "Streamlit Community Cloud / HuggingFace public live links and on-prem Docker edge appliance recipes.",
+      "file": "decisions.md"
+    },
     "metric.confidence": {
       "key": "metric.confidence",
       "type": "metric",
@@ -219,6 +226,11 @@
     {
       "src": "triage.engine",
       "dst": "dec.008",
+      "rel": "relates_to"
+    },
+    {
+      "src": "app",
+      "dst": "dec.009",
       "rel": "relates_to"
     }
   ],

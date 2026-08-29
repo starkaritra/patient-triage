@@ -56,6 +56,8 @@ flowchart TD
   dec_005["DEC-005: Multi-System VOI Bank<br/><small>(decision)</small>"]
   dec_006["DEC-006: HIPAA Pseudonymization at Rest<br/><small>(decision)</small>"]
   dec_007["DEC-007: Vital Sign Velocity Tracking<br/><small>(decision)</small>"]
+  dec_008["DEC-008: Distributed & SLM Horizon<br/><small>(decision)</small>"]
+  dec_009["DEC-009: Web & Live Hosting Strategy<br/><small>(decision)</small>"]
 
   metric_confidence["Confidence Formula (0.0–1.0)<br/><small>(metric)</small>"]
   metric_priority_score["Dynamic Priority & Velocity Score<br/><small>(metric)</small>"]
@@ -79,6 +81,8 @@ flowchart TD
   triage_voi -->|relates_to| dec_005
   triage_audit -->|relates_to| dec_006
   triage_queue -->|relates_to| dec_007
+  triage_engine -->|relates_to| dec_008
+  app -->|relates_to| dec_009
 
   class app service;
   class triage_models data;
@@ -92,6 +96,8 @@ flowchart TD
   class dec_005 decision;
   class dec_006 decision;
   class dec_007 decision;
+  class dec_008 decision;
+  class dec_009 decision;
   class metric_confidence metric;
   class metric_priority_score metric;
 ```
@@ -133,8 +139,7 @@ $$\text{Confidence} = 1.0 - P_{\text{data}} - P_{\text{vitals}} - P_{\text{ambig
 $$\text{Priority Score} = (6 - \text{ESI}) \times 100 + \left(\frac{\text{Wait Time}}{\text{Safe Threshold}}\right) \times 50 + \Delta \text{Vitals Penalty} + \text{Pain Penalty}$$
 
 **Vital Velocity Penalty ($\Delta\text{Vitals}$):**
-$$\Delta \text{Vitals Penalty} = 2.0 \times \Delta\text{HR} + 2.5 \times (-\Delta\text{SBP}) + 4.0 \times (-\Delta\text{SpO}_2)$$
-*(Computed when serial vitals are re-recorded in the waiting room to catch rapid decompensation before breach)*
+$$\Delta \text{Vitals Penalty} = 1.5 \times \Delta\text{HR} + 2.5 \times (-\Delta\text{SBP}) + 5.0 \times (-\Delta\text{SpO}_2)$$
 
 ---
 
@@ -149,7 +154,44 @@ $$\Delta \text{Vitals Penalty} = 2.0 \times \Delta\text{HR} + 2.5 \times (-\Delt
 
 ---
 
-## 5. Regulatory & Audit Guarantees
+## 5. Web & Cloud Hosting Topologies (DEC-009)
+
+```
+[ Developer / Stakeholder Web Client ]
+                 │
+                 ▼ (HTTPS / TLS 1.3)
+┌─────────────────────────────────────────────────────────────┐
+│ 1. Public Live Demo: Streamlit Community Cloud / HuggingFace │  --> Free, persistent public URL, automated CI/CD from GitHub
+└─────────────────────────────────────────────────────────────┘
+
+[ Hospital Nurse Tablet / Workstation Fleet ]
+                 │
+                 ▼ (Local Hospital LAN / Sub-millisecond)
+┌─────────────────────────────────────────────────────────────┐
+│ 2. Hospital Pilot: On-Prem Edge Node (Docker Compose / K3s) │  --> 100% Air-gapped, zero cloud egress, HIPAA Safe Harbor
+└─────────────────────────────────────────────────────────────┘
+
+[ Regional Multi-Hospital Network ]
+                 │
+                 ▼ (IPSec VPN / DirectConnect)
+┌─────────────────────────────────────────────────────────────┐
+│ 3. Enterprise Production: HIPAA Cloud VPC (AWS/GCP/Azure)   │  --> Multi-facility clustering, NATS JetStream, Managed Postgres
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Hosting Options Breakdown:
+1. **Public Live Demonstration Hosting (Streamlit Community Cloud / Hugging Face Spaces):**
+   - Direct connection to GitHub repository (`starkaritra/patient-triage`).
+   - Serves an immediate public HTTPS URL (e.g. `https://patient-triage.streamlit.app`) with continuous deployment on git push.
+2. **On-Premise Hospital Edge Node:**
+   - Single-node Docker deployment (`docker-compose.yml`) running directly on hospital LAN.
+   - Guaranteed $<1\text{ms}$ response times and zero clinical data egress to external networks.
+3. **Enterprise HIPAA Private Cloud VPC:**
+   - Managed Kubernetes (EKS/GKE) with signed Business Associate Agreement (BAA) for central health system coordination.
+
+---
+
+## 6. Regulatory & Audit Guarantees
 1. **HIPAA Safe Harbor De-Identification:** Patient names are never written plaintext to disk; audit logs store deterministic SHA-256 tokens (`PT-HASH8`) with age brackets only.
 2. **Advisory Decision Support:** Recommendations never autonomously commit diagnoses or medical orders (aligned with FDA CDS / EU MDR Annex VIII Rule 11).
 3. **Mandatory Override Rationale:** Clinician overrides enforce a mandatory clinical justification text string before persisting to `audit_log.json`.
