@@ -1,0 +1,207 @@
+{
+  "version": "1.0.0",
+  "project": {
+    "name": "PatientTriage.ai",
+    "summary": "Explainable, safety-biased clinical decision-support triage system with dynamic deterioration tracking, active VOI questioning, and regulatory audit trail.",
+    "root": "C:\\Code\\patient-triage",
+    "created_at": "2026-08-30T00:30:00Z",
+    "updated_at": "2026-08-30T00:30:00Z"
+  },
+  "nodes": {
+    "app": {
+      "key": "app",
+      "type": "service",
+      "label": "Streamlit Clinical HUD",
+      "summary": "Interactive 3-workstation clinical dashboard: Intake/Scorer, Waiting Room Radar, and Audit/Override Log.",
+      "file": "app.py"
+    },
+    "triage.models": {
+      "key": "triage.models",
+      "type": "data",
+      "label": "Clinical Data Contracts",
+      "summary": "Pydantic v2 schemas: PatientRecord, Vitals, AgeCategory, ESILevel, TriageResult.",
+      "file": "triage/models.py"
+    },
+    "triage.rules": {
+      "key": "triage.rules",
+      "type": "component",
+      "label": "Physiological Red-Lines",
+      "summary": "Age-stratified deterministic vital thresholds & red-lines (PEWS, NEWS2, qSOFA).",
+      "file": "triage/rules.py"
+    },
+    "triage.engine": {
+      "key": "triage.engine",
+      "type": "component",
+      "label": "Base & Algorithmic Triage Engine",
+      "summary": "Abstract BaseTriageEngine contract and deterministic AlgorithmicTriageEngine core (<50ms SLA).",
+      "file": "triage/engine.py"
+    },
+    "triage.voi": {
+      "key": "triage.voi",
+      "type": "component",
+      "label": "Active Value-of-Information (VOI) Engine",
+      "summary": "Entropy-reducing clinical follow-up question bank triggered when confidence < 70%.",
+      "file": "triage/voi.py"
+    },
+    "triage.queue": {
+      "key": "triage.queue",
+      "type": "component",
+      "label": "Dynamic Queue & Deterioration Radar",
+      "summary": "Safe wait-time degradation, re-triage breach alerts, and 3x surge mode routing.",
+      "file": "triage/queue.py"
+    },
+    "triage.audit": {
+      "key": "triage.audit",
+      "type": "component",
+      "label": "Immutable Audit Trail",
+      "summary": "Append-only audit ledger recording AI suggestions, VOI Q&A, and clinician overrides with justifications.",
+      "file": "triage/audit.py"
+    },
+    "triage.cohort": {
+      "key": "triage.cohort",
+      "type": "data",
+      "label": "20-Patient Benchmark Cohort",
+      "summary": "Pre-configured synthetic test patients across pediatric, adult, and geriatric clinical presentations.",
+      "file": "triage/cohort.py"
+    },
+    "dec.001": {
+      "key": "dec.001",
+      "type": "decision",
+      "label": "DEC-001: Pydantic v2 Schema Contracts",
+      "summary": "Enforces strict boundary validation and zero-copy JSON serialization.",
+      "file": "decisions.md"
+    },
+    "dec.002": {
+      "key": "dec.002",
+      "type": "decision",
+      "label": "DEC-002: Declarative Rule Registry",
+      "summary": "Isolates physiological red-line thresholds from engine orchestration mechanics.",
+      "file": "decisions.md"
+    },
+    "dec.003": {
+      "key": "dec.003",
+      "type": "decision",
+      "label": "DEC-003: Pluggable Repository Pattern",
+      "summary": "Supports in-memory dev execution and production Redis/SQL queue/audit backends.",
+      "file": "decisions.md"
+    },
+    "metric.confidence": {
+      "key": "metric.confidence",
+      "type": "metric",
+      "label": "Confidence Formula (0.0–1.0)",
+      "summary": "1.0 - P(data) - P(vitals) - P(ambiguity) - P(age_risk). Triggers VOI when < 0.70.",
+      "file": "handoff.md"
+    },
+    "metric.priority_score": {
+      "key": "metric.priority_score",
+      "type": "metric",
+      "label": "Queue Priority Invariant",
+      "summary": "(6 - ESI)*100 + (WaitTime / SafeThreshold)*50 + Delta Vitals Penalty.",
+      "file": "architecture.md"
+    }
+  },
+  "edges": [
+    {
+      "src": "app",
+      "dst": "triage.engine",
+      "rel": "calls"
+    },
+    {
+      "src": "app",
+      "dst": "triage.queue",
+      "rel": "uses"
+    },
+    {
+      "src": "app",
+      "dst": "triage.audit",
+      "rel": "uses"
+    },
+    {
+      "src": "app",
+      "dst": "triage.cohort",
+      "rel": "consumes"
+    },
+    {
+      "src": "triage.engine",
+      "dst": "triage.rules",
+      "rel": "calls"
+    },
+    {
+      "src": "triage.engine",
+      "dst": "triage.voi",
+      "rel": "calls"
+    },
+    {
+      "src": "triage.engine",
+      "dst": "triage.models",
+      "rel": "implements"
+    },
+    {
+      "src": "triage.queue",
+      "dst": "triage.models",
+      "rel": "consumes"
+    },
+    {
+      "src": "triage.audit",
+      "dst": "triage.models",
+      "rel": "consumes"
+    },
+    {
+      "src": "triage.cohort",
+      "dst": "triage.models",
+      "rel": "produces"
+    },
+    {
+      "src": "triage.engine",
+      "dst": "metric.confidence",
+      "rel": "produces"
+    },
+    {
+      "src": "triage.queue",
+      "dst": "metric.priority_score",
+      "rel": "produces"
+    },
+    {
+      "src": "triage.models",
+      "dst": "dec.001",
+      "rel": "relates_to"
+    },
+    {
+      "src": "triage.rules",
+      "dst": "dec.002",
+      "rel": "relates_to"
+    },
+    {
+      "src": "triage.queue",
+      "dst": "dec.003",
+      "rel": "relates_to"
+    }
+  ],
+  "facts": [
+    {
+      "fact": "Evaluation latency SLA is strictly under 50ms (deterministic core runs in ~0.8ms).",
+      "source": "architecture.md:14",
+      "node": "triage.engine"
+    },
+    {
+      "fact": "Asymmetric loss: Under-triage (ESI 1/2 assigned to 3/4) is 10x worse than over-triage.",
+      "source": "handoff.md:54",
+      "node": "triage.engine"
+    },
+    {
+      "fact": "Safe waiting thresholds: ESI 1 = 0m, ESI 2 = 10m, ESI 3 = 30m, ESI 4 = 60m, ESI 5 = 120m.",
+      "source": "handoff.md:176",
+      "node": "triage.queue"
+    },
+    {
+      "fact": "Active VOI questions trigger whenever epistemic confidence falls below 70%.",
+      "source": "handoff.md:161",
+      "node": "triage.voi"
+    },
+    {
+      "fact": "Every clinician override requires a mandatory justification and writes an immutable audit record.",
+      "source": "handoff.md:198",
+      "node": "triage.audit"
+    }
+  ]
+}

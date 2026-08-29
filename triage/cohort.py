@@ -148,6 +148,7 @@ BENCHMARK_COHORT: List[PatientRecord] = [
         history=["Penicillin Allergy (new)"],
     ),
 ]
+BENCHMARK_COHORT_20 = BENCHMARK_COHORT
 
 
 def load_benchmark_cohort() -> List[PatientRecord]:

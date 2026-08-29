@@ -5,7 +5,7 @@ Manages safe-wait time windows, real-time priority scores, and fast-track divers
 
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 from triage.models import PatientRecord
 
 
