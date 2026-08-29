@@ -1,6 +1,6 @@
 """
-PatientTriage.ai — Clinical Decision Support HUD (v1 Hardened).
-A clean, visual-first dashboard designed for rapid clinical triage assessment,
+PatientTriage.ai — Clinical Decision Support HUD (v1 Hardened & Responsive).
+A clean, visual-first responsive dashboard designed for rapid clinical triage assessment,
 dynamic deterioration radar monitoring, and immutable regulatory compliance logging.
 """
 
@@ -20,40 +20,125 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom Dashboard Styling
+# Custom Dashboard Styling & Responsive Breakpoints
 st.markdown("""
 <style>
-    /* Metric Cards & Layout */
-    .stMetric {
-        background-color: rgba(255, 255, 255, 0.04);
-        padding: 12px 16px;
-        border-radius: 8px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+    /* Global Container Adjustments */
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+        max-width: 100%;
+    }
+
+    /* Responsive KPI Metric Grid */
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+        margin-bottom: 20px;
     }
     
-    /* Clinical Badges */
-    .badge-esi-1 { background-color: #B71C1C; color: white; padding: 4px 10px; border-radius: 4px; font-weight: 700; font-size: 13px; }
-    .badge-esi-2 { background-color: #E65100; color: white; padding: 4px 10px; border-radius: 4px; font-weight: 700; font-size: 13px; }
-    .badge-esi-3 { background-color: #F57F17; color: white; padding: 4px 10px; border-radius: 4px; font-weight: 700; font-size: 13px; }
-    .badge-esi-4 { background-color: #2E7D32; color: white; padding: 4px 10px; border-radius: 4px; font-weight: 700; font-size: 13px; }
-    .badge-esi-5 { background-color: #1565C0; color: white; padding: 4px 10px; border-radius: 4px; font-weight: 700; font-size: 13px; }
+    .kpi-card {
+        background-color: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 108px;
+        box-sizing: border-box;
+    }
     
-    .status-breach { background-color: #7F1D1D; color: #FCA5A5; padding: 3px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; }
-    .status-velocity { background-color: #78350F; color: #FCD34D; padding: 3px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; }
-    .status-stable { background-color: #064E3B; color: #6EE7B7; padding: 3px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; }
+    .kpi-label {
+        font-size: 11px;
+        color: #94A3B8;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        font-weight: 600;
+        margin-bottom: 4px;
+    }
+    
+    .kpi-val {
+        font-size: 26px;
+        font-weight: 800;
+        line-height: 1.2;
+        color: #F8FAFC;
+    }
+    
+    .kpi-sub {
+        font-size: 12px;
+        font-weight: 500;
+        margin-top: 4px;
+        color: #94A3B8;
+    }
+    
+    .kpi-sub.alert { color: #F87171; font-weight: 600; }
+    .kpi-sub.warn { color: #FBBF24; font-weight: 600; }
+    .kpi-sub.ok { color: #34D399; }
+
+    /* Responsive Vitals Strip Grid */
+    .vitals-grid {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 10px;
+        margin: 14px 0 20px 0;
+    }
     
     .vital-box {
         background-color: rgba(255, 255, 255, 0.03);
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 6px;
-        padding: 10px;
+        padding: 12px 10px;
         text-align: center;
+        min-height: 80px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
     }
-    .vital-label { font-size: 11px; color: #94A3B8; text-transform: uppercase; font-weight: 600; }
-    .vital-val { font-size: 20px; font-weight: 700; margin-top: 2px; }
     
+    .vital-label {
+        font-size: 11px;
+        color: #94A3B8;
+        text-transform: uppercase;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+    }
+    
+    .vital-val {
+        font-size: 22px;
+        font-weight: 700;
+        color: #F8FAFC;
+        margin-top: 2px;
+    }
+
+    /* Media Queries for Screen Responsiveness */
+    @media (max-width: 1024px) {
+        .kpi-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        .vitals-grid {
+            grid-template-columns: repeat(3, 1fr);
+        }
+    }
+
+    @media (max-width: 640px) {
+        .kpi-grid {
+            grid-template-columns: 1fr;
+        }
+        .vitals-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
     /* Clean Divider */
-    hr { margin: 16px 0; border: 0; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+    hr {
+        margin: 16px 0;
+        border: 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -76,7 +161,7 @@ if "clinician_id" not in st.session_state:
 st.sidebar.markdown("### System Telemetry")
 st.sidebar.text(f"Clinician ID: {st.session_state.clinician_id}")
 st.sidebar.text("Engine Core: Algorithmic v1 (<1ms)")
-st.sidebar.text("Privacy Standard: HIPAA SHA-256")
+st.sidebar.text("Privacy: HIPAA SHA-256")
 
 st.sidebar.divider()
 st.sidebar.markdown("### Department Controls")
@@ -84,11 +169,11 @@ surge_toggle = st.sidebar.toggle("3x Surge Mode", value=st.session_state.queue.s
 st.session_state.queue.surge_mode = surge_toggle
 
 col_sb1, col_sb2 = st.sidebar.columns(2)
-if col_sb1.button("Advance Wait +15m", use_container_width=True):
+if col_sb1.button("Advance +15m", use_container_width=True):
     st.session_state.queue.simulate_time_advance(15)
     st.rerun()
 
-if col_sb2.button("Reset Benchmark", use_container_width=True):
+if col_sb2.button("Reset Queue", use_container_width=True):
     st.session_state.queue.repo.clear()
     for p in load_benchmark_cohort():
         res = st.session_state.engine.evaluate(p)
@@ -96,19 +181,40 @@ if col_sb2.button("Reset Benchmark", use_container_width=True):
         st.session_state.queue.repo.add(p)
     st.rerun()
 
-# Global Header Status Bar
+# Compute Global Telemetry
 all_patients = st.session_state.queue.repo.get_all()
 breached_count = sum(1 for p in all_patients if st.session_state.queue.is_breach(p))
 decompensating_count = sum(1 for p in all_patients if PatientQueue.calculate_vital_velocity_penalty(p) > 0)
-occupancy_str = "96% [CRITICAL]" if surge_toggle else "78% [NOMINAL]"
+occupancy_pct = "96%" if surge_toggle else "78%"
+occupancy_sub = "Critical Surge Capacity" if surge_toggle else "Nominal Capacity"
+dept_status = "SURGE ACTIVE" if surge_toggle else "NOMINAL"
+dept_sub = "3x Load Balancing" if surge_toggle else "Standard Flow"
 
-col_h1, col_h2, col_h3, col_h4 = st.columns(4)
-col_h1.metric("Department Status", "SURGE ACTIVE" if surge_toggle else "NOMINAL", delta="3x Capacity Load" if surge_toggle else "Nominal Flow")
-col_h2.metric("Occupancy Capacity", occupancy_str)
-col_h3.metric("Patients in Waiting Queue", len(all_patients), delta=f"{decompensating_count} Deteriorating" if decompensating_count else None, delta_color="inverse")
-col_h4.metric("Re-Triage Window Breaches", breached_count, delta="Immediate Action Required" if breached_count else "Within Safe Windows", delta_color="inverse")
-
-st.divider()
+# Responsive, Identically-Sized KPI Header Grid
+st.markdown(f"""
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-label">Department Status</div>
+        <div class="kpi-val" style="color: {'#F87171' if surge_toggle else '#F8FAFC'};">{dept_status}</div>
+        <div class="kpi-sub {'warn' if surge_toggle else 'ok'}">{dept_sub}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Occupancy Capacity</div>
+        <div class="kpi-val">{occupancy_pct}</div>
+        <div class="kpi-sub {'alert' if surge_toggle else 'ok'}">{occupancy_sub}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Patients Waiting</div>
+        <div class="kpi-val">{len(all_patients)}</div>
+        <div class="kpi-sub {'alert' if decompensating_count else 'ok'}">{'Deterioration Detected: ' + str(decompensating_count) if decompensating_count else 'All Vitals Stable'}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Re-Triage Breaches</div>
+        <div class="kpi-val" style="color: {'#F87171' if breached_count else '#F8FAFC'};">{breached_count}</div>
+        <div class="kpi-sub {'alert' if breached_count else 'ok'}">{'Action Required' if breached_count else 'Within Safe Windows'}</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 # Tab Workstations
 tab_intake, tab_radar, tab_audit = st.tabs([
@@ -127,9 +233,9 @@ with tab_intake:
     current_patient = all_patients[selected_idx]
 
     col_sel2.markdown(f"""
-    <div style="background-color:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:10px 14px;">
+    <div style="background-color:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:10px 14px; text-align:right;">
         <span style="font-size:11px; color:#94A3B8; text-transform:uppercase; font-weight:600;">HIPAA Token</span><br>
-        <span style="font-size:16px; font-weight:700; font-family:monospace;">{current_patient.pseudo_id}</span>
+        <span style="font-size:15px; font-weight:700; font-family:monospace; color:#E2E8F0;">{current_patient.pseudo_id}</span>
     </div>
     """, unsafe_allow_html=True)
 
@@ -142,22 +248,41 @@ with tab_intake:
         </div>
         """, unsafe_allow_html=True)
 
-    # Vitals Strip
+    # Responsive Vitals Grid
     v = current_patient.vitals
-    v_cols = st.columns(6)
-    v_cols[0].markdown(f"""<div class="vital-box"><div class="vital-label">Heart Rate</div><div class="vital-val">{v.heart_rate} <span style="font-size:12px; font-weight:400;">bpm</span></div></div>""", unsafe_allow_html=True)
-    v_cols[1].markdown(f"""<div class="vital-box"><div class="vital-label">Blood Pressure</div><div class="vital-val">{v.systolic_bp}/{v.diastolic_bp}</div></div>""", unsafe_allow_html=True)
-    v_cols[2].markdown(f"""<div class="vital-box"><div class="vital-label">Resp Rate</div><div class="vital-val">{v.resp_rate} <span style="font-size:12px; font-weight:400;">/min</span></div></div>""", unsafe_allow_html=True)
-    v_cols[3].markdown(f"""<div class="vital-box"><div class="vital-label">SpO2</div><div class="vital-val">{v.spo2:.0f}%</div></div>""", unsafe_allow_html=True)
-    v_cols[4].markdown(f"""<div class="vital-box"><div class="vital-label">Core Temp</div><div class="vital-val">{v.temp_celsius:.1f}°C</div></div>""", unsafe_allow_html=True)
-    v_cols[5].markdown(f"""<div class="vital-box"><div class="vital-label">Pain Score</div><div class="vital-val">{v.pain_scale}/10</div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="vitals-grid">
+        <div class="vital-box">
+            <div class="vital-label">Heart Rate</div>
+            <div class="vital-val">{v.heart_rate} <span style="font-size:12px; font-weight:400; color:#94A3B8;">bpm</span></div>
+        </div>
+        <div class="vital-box">
+            <div class="vital-label">Blood Pressure</div>
+            <div class="vital-val">{v.systolic_bp}/{v.diastolic_bp}</div>
+        </div>
+        <div class="vital-box">
+            <div class="vital-label">Resp Rate</div>
+            <div class="vital-val">{v.resp_rate} <span style="font-size:12px; font-weight:400; color:#94A3B8;">/min</span></div>
+        </div>
+        <div class="vital-box">
+            <div class="vital-label">SpO2</div>
+            <div class="vital-val">{v.spo2:.0f}%</div>
+        </div>
+        <div class="vital-box">
+            <div class="vital-label">Core Temp</div>
+            <div class="vital-val">{v.temp_celsius:.1f}°C</div>
+        </div>
+        <div class="vital-box">
+            <div class="vital-label">Pain Score</div>
+            <div class="vital-val">{v.pain_scale}/10</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     # Evaluate Patient
     result = st.session_state.engine.evaluate(current_patient)
     current_patient.assigned_esi = result.esi_level
     st.session_state.queue.repo.update(current_patient)
-
-    st.markdown("<br>", unsafe_allow_html=True)
 
     # Primary Decision Presentation
     col_dec1, col_dec2 = st.columns([1, 2])
@@ -165,20 +290,20 @@ with tab_intake:
     with col_dec1:
         esi_color_map = {
             1: ("#B71C1C", "Resuscitation (Immediate Life Threat)"),
-            2: ("#E65100", "Emergent (High Risk / Physiological Danger)"),
-            3: ("#F57F17", "Urgent (Stable Vitals / 2+ Resources)"),
-            4: ("#2E7D32", "Less Urgent (Stable Vitals / 1 Resource)"),
+            2: ("#E65100", "Emergent (High Risk / Danger Signs)"),
+            3: ("#F57F17", "Urgent (Stable / Multiple Resources)"),
+            4: ("#2E7D32", "Less Urgent (Stable / Single Resource)"),
             5: ("#1565C0", "Non-Urgent (Routine Exam / 0 Resources)"),
         }
         bg_col, esi_title = esi_color_map.get(result.esi_level, ("#333", "Acuity Level"))
 
         st.markdown(f"""
         <div style="background-color:{bg_col}; padding:20px; border-radius:8px; color:white; text-align:center; box-shadow:0 4px 6px -1px rgba(0,0,0,0.3);">
-            <div style="font-size:13px; text-transform:uppercase; letter-spacing:1px; font-weight:600; opacity:0.9;">Triage Recommendation</div>
-            <div style="font-size:46px; font-weight:800; line-height:1.1; margin:8px 0;">ESI LEVEL {result.esi_level}</div>
+            <div style="font-size:12px; text-transform:uppercase; letter-spacing:1px; font-weight:600; opacity:0.9;">Triage Recommendation</div>
+            <div style="font-size:44px; font-weight:800; line-height:1.1; margin:8px 0;">ESI LEVEL {result.esi_level}</div>
             <div style="font-size:13px; font-weight:600; opacity:0.95;">{esi_title}</div>
             <div style="margin-top:14px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.2); font-size:14px;">
-                Confidence: <strong>{int(result.confidence * 100)}%</strong> ({'High' if result.confidence >= 0.85 else 'Calibrated Medium' if result.confidence >= 0.70 else 'Uncertain / Escallated'})
+                Confidence: <strong>{int(result.confidence * 100)}%</strong> ({'High' if result.confidence >= 0.85 else 'Calibrated Medium' if result.confidence >= 0.70 else 'Uncertain / Escalated'})
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -218,7 +343,7 @@ with tab_intake:
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("""
             <div style="background-color:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:6px; padding:12px;">
-                <div style="color:#FBBF24; font-weight:700; font-size:13px; text-transform:uppercase; margin-bottom:4px;">Active Value-of-Information (VOI) Query</div>
+                <div style="color:#FBBF24; font-weight:700; font-size:12px; text-transform:uppercase; margin-bottom:4px;">Active Value-of-Information (VOI) Query</div>
                 <div style="font-size:12px; color:#D1D5DB; margin-bottom:8px;">Epistemic diagnostic entropy detected. Targeted clinical query triggered to collapse uncertainty:</div>
             </div>
             """, unsafe_allow_html=True)
@@ -226,7 +351,7 @@ with tab_intake:
             for q in result.recommended_followups:
                 st.markdown(f"**Targeted Question:** `{q}`")
                 ans_col1, ans_col2 = st.columns([3, 1])
-                ans_text = ans_col1.text_input("Enter Response or Clinical Observation:", value=current_patient.answers_to_followups.get(q, ""), key=f"q_{q}")
+                ans_text = ans_col1.text_input("Enter Response or Observation:", value=current_patient.answers_to_followups.get(q, ""), key=f"q_{q}")
                 if ans_col2.button("Submit Answer", key=f"btn_{q}", use_container_width=True):
                     current_patient.answers_to_followups[q] = ans_text
                     st.session_state.queue.repo.update(current_patient)
