@@ -1,9 +1,9 @@
 """
-PatientTriage.ai — Clinical Streamlit Decision Support HUD.
+PatientTriage.ai — Clinical Streamlit Decision Support HUD (v1 Hardened).
 Features:
-- Workstation 1: Real-time Intake & Algorithmic Triage Engine with Active VOI
-- Workstation 2: Dynamic Waiting Room Radar with Deterioration Tracking & 3x Surge Fast-Track
-- Workstation 3: Immutable Regulatory Audit Stream & Clinician Override Manager
+- Workstation 1: Real-time Intake & Algorithmic Triage Engine with Expanded VOI & High-Risk Med Profiler
+- Workstation 2: Dynamic Waiting Room Radar with Vital Velocity Tracking & 3x Surge Fast-Track
+- Workstation 3: HIPAA Safe Harbor De-Identified Immutable Audit Ledger & Clinician Override Manager
 """
 
 import streamlit as st
@@ -41,7 +41,8 @@ if "clinician_id" not in st.session_state:
 # Sidebar Telemetry & Controls
 st.sidebar.title("🏥 PatientTriage.ai")
 st.sidebar.markdown(f"**Triaging Clinician:** `{st.session_state.clinician_id}`")
-st.sidebar.markdown("**Decision Core:** `Algorithmic Baseline (<1ms)`")
+st.sidebar.markdown("**Engine Core:** `Algorithmic Baseline v1 (<1ms)`")
+st.sidebar.markdown("**Privacy Standard:** `HIPAA Safe Harbor SHA-256`")
 
 st.sidebar.divider()
 st.sidebar.subheader("🚨 Emergency Dept Controls")
@@ -84,15 +85,21 @@ tab_intake, tab_radar, tab_audit = st.tabs([
 # TAB 1: INTAKE & SCORER
 # -------------------------------------------------------------
 with tab_intake:
-    st.subheader("Patient Clinical Assessment & VOI Assistant")
+    st.subheader("Patient Clinical Assessment & Active VOI Assistant")
 
     # Preset Quick Selectors
-    col_preset1, col_preset2, col_preset3 = st.columns(3)
-    patient_names = [f"{p.id}: {p.name} ({p.vitals.age_category.value})" for p in all_patients]
-    selected_idx = col_preset1.selectbox("Select Patient to Assess / Edit", range(len(patient_names)), format_func=lambda i: patient_names[i])
+    col_preset1, col_preset2 = st.columns([2, 1])
+    patient_names = [f"{p.id} | {p.pseudo_id} — {p.name} ({p.vitals.age_category.value})" for p in all_patients]
+    selected_idx = col_preset1.selectbox("Select Patient from Intake / Waiting Queue", range(len(patient_names)), format_func=lambda i: patient_names[i])
     current_patient = all_patients[selected_idx]
 
-    with st.expander("📝 Edit Patient Parameters & Vitals", expanded=False):
+    col_preset2.info(f"**De-Identified Token:** `{current_patient.pseudo_id}`\n**Age Category:** `{current_patient.vitals.age_category.value.title()}`")
+
+    # High-Risk Medication Badges
+    if current_patient.high_risk_med_alerts:
+        st.error("🚨 **High-Risk Medication / Allergy Alerts Detected:** " + " | ".join(current_patient.high_risk_med_alerts))
+
+    with st.expander("📝 Edit Patient Parameters, Meds & Vitals", expanded=False):
         c1, c2, c3, c4 = st.columns(4)
         v_hr = c1.number_input("Heart Rate (bpm)", 20, 260, current_patient.vitals.heart_rate)
         v_sbp = c2.number_input("Systolic BP (mmHg)", 30, 260, current_patient.vitals.systolic_bp)
@@ -107,6 +114,8 @@ with tab_intake:
 
         v_complaint = st.text_input("Chief Complaint", current_patient.chief_complaint)
         v_history_str = st.text_input("Past Medical History (comma-separated)", ", ".join(current_patient.history))
+        v_meds_str = st.text_input("Current Home Medications (comma-separated)", ", ".join(current_patient.medications))
+        v_allergies_str = st.text_input("Documented Allergies (comma-separated)", ", ".join(current_patient.allergies))
 
         if st.button("💾 Update Patient Intake"):
             current_patient.vitals = Vitals(
@@ -115,8 +124,10 @@ with tab_intake:
             )
             current_patient.chief_complaint = v_complaint
             current_patient.history = [h.strip() for h in v_history_str.split(",") if h.strip()]
+            current_patient.medications = [m.strip() for m in v_meds_str.split(",") if m.strip()]
+            current_patient.allergies = [a.strip() for a in v_allergies_str.split(",") if a.strip()]
             st.session_state.queue.repo.update(current_patient)
-            st.success("Patient updated.")
+            st.success("Patient intake records updated.")
             st.rerun()
 
     # Evaluate Patient
@@ -148,7 +159,7 @@ with tab_intake:
 
         if st.button("🔒 Commit Clinician Decision"):
             if new_override is not None and new_override != result.esi_level and not override_justification.strip():
-                st.error("Mandatory regulatory requirement: Justification text required for override.")
+                st.error("Mandatory regulatory requirement: Clinical justification text required for override.")
             else:
                 current_patient.override_esi = new_override
                 current_patient.override_reason = override_justification if new_override else None
@@ -160,7 +171,7 @@ with tab_intake:
                     override_esi=new_override,
                     override_reason=override_justification,
                 )
-                st.success("Decision committed to immutable audit log.")
+                st.success("Decision committed to HIPAA de-identified audit ledger.")
                 st.rerun()
 
     with col_card2:
@@ -171,7 +182,7 @@ with tab_intake:
         if result.is_ambiguous and result.recommended_followups:
             st.warning("⚠️ **Active VOI Assistant (Diagnostic Entropy Detected)**")
             for q in result.recommended_followups:
-                st.markdown(f"**Targeted Query:** *{q}*")
+                st.markdown(f"**Targeted Clinical Query:** *{q}*")
                 ans = st.text_input(f"Clinician Check / Patient Response:", value=current_patient.answers_to_followups.get(q, ""), key=f"voi_{q}")
                 if st.button(f"Submit Follow-Up Response", key=f"btn_{q}"):
                     current_patient.answers_to_followups[q] = ans
@@ -182,21 +193,25 @@ with tab_intake:
 # TAB 2: WAITING ROOM RADAR
 # -------------------------------------------------------------
 with tab_radar:
-    st.subheader("Dynamic Queue Deterioration Radar")
+    st.subheader("Dynamic Queue Deterioration Radar & Vital Velocity Tracker")
 
     main_q, fast_q = st.session_state.queue.get_ranked_queues()
 
     def format_queue_df(queue_items):
         records = []
         for patient, score, breached in queue_items:
+            velocity = PatientQueue.calculate_vital_velocity_penalty(patient)
+            status_tag = "🚨 RE-TRIAGE BREACH" if breached else ("⚠️ RAPID DECOMPENSATION" if velocity > 0 else "🟢 Stable")
             records.append({
-                "Status": "🚨 RE-TRIAGE BREACH" if breached else "🟢 Safe",
-                "Patient ID": patient.id,
+                "Status": status_tag,
+                "ID": patient.id,
+                "Token": patient.pseudo_id,
                 "Name": patient.name,
                 "Age Bracket": patient.vitals.age_category.value.title(),
                 "Effective ESI": f"ESI {patient.effective_esi}" if patient.effective_esi else "Unassigned",
                 "Wait Time": f"{patient.wait_time_minutes} min",
                 "Priority Score": score,
+                "Vital Velocity (Δ)": f"+{velocity}" if velocity > 0 else "0.0",
                 "Complaint": patient.chief_complaint,
                 "Pain": f"{patient.vitals.pain_scale}/10",
             })
@@ -219,7 +234,7 @@ with tab_radar:
             st.info("No stable patients currently in Fast-Track diversion.")
 
     st.divider()
-    st.markdown("#### 💥 Deterioration Stress Simulator")
+    st.markdown("#### 💥 Deterioration & Vital Velocity Simulator")
     sim_col1, sim_col2 = st.columns([2, 1])
     target_id = sim_col1.selectbox("Select Patient to Simulate Sudden Vitals Crash", [p.id for p in all_patients])
     if sim_col2.button("📉 Trigger Acute Decompensation"):
@@ -228,20 +243,26 @@ with tab_radar:
             new_res = st.session_state.engine.evaluate(decomp_patient)
             decomp_patient.assigned_esi = new_res.esi_level
             st.session_state.queue.repo.update(decomp_patient)
-            st.warning(f"Patient {target_id} vitals crashed! Priority score elevated.")
+            st.warning(f"Patient {target_id} ({decomp_patient.pseudo_id}) vitals crashed! Vital velocity penalty applied.")
             st.rerun()
 
 # -------------------------------------------------------------
 # TAB 3: AUDIT & OVERRIDE LOG
 # -------------------------------------------------------------
 with tab_audit:
-    st.subheader("Immutable Regulatory Event Ledger")
+    st.subheader("Immutable Regulatory Event Ledger (HIPAA Safe Harbor De-Identified)")
     events = st.session_state.audit_logger.repo.get_events()
 
     if events:
-        st.markdown(f"**Total Audited Actions:** `{len(events)}`")
+        st.markdown(f"**Total Audited Ledger Entries:** `{len(events)}` | **De-Identification Status:** `Active (SHA-256 Tokenized)`")
         for ev in reversed(events):
-            with st.expander(f"🕒 {ev['timestamp']} — {ev['patient_id']} ({ev['patient_name']}) — Final ESI: {ev['clinician_decision']['final_esi']}"):
+            token = ev.get("pseudonymized_token", ev.get("patient_id"))
+            age_info = ev.get("demographics", {}).get("age_category", "")
+            final_esi = ev.get("clinician_decision", {}).get("final_esi")
+            was_ovr = ev.get("clinician_decision", {}).get("was_overridden", False)
+            
+            label = f"🕒 {ev['timestamp']} — {token} ({age_info}) — Final ESI: {final_esi} {'[OVERRIDDEN]' if was_ovr else '[ACCEPTED]'}"
+            with st.expander(label):
                 st.json(ev)
     else:
         st.info("No audit events committed yet in this session. Commit an assessment or override to record ledger entries.")

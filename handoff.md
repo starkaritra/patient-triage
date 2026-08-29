@@ -309,37 +309,41 @@ The Streamlit UI is organized into 3 clear clinical workstations:
 
 ---
 
-## 10. Implementation Checklist for Coding Agents
+## 10. Future Horizon (v2) Strategic Architecture
 
-### Step 1: Data Structures & Deterministic Rules
-- [x] Implement `triage/models.py` with Pydantic v2 schemas.
-- [x] Implement `triage/rules.py` with age-adjusted vital checks (PEWS, NEWS2, qSOFA).
-
-### Step 2: Algorithmic Scorer & Active VOI
-- [x] Implement `triage/engine.py` with `BaseTriageEngine` and `AlgorithmicTriageEngine`.
-- [x] Implement `triage/voi.py` to trigger targeted questions on confidence $<70\%$.
-- [x] Integrate reciprocal confidence update when nurse answers VOI questions.
-
-### Step 3: Dynamic Queue & Surge Simulator
-- [x] Implement `triage/queue.py` tracking wait times, safe thresholds, and priority re-ranking.
-- [x] Add deterioration trigger functions (`simulate_time_advance()`, `simulate_vital_decompensation()`).
-- [x] Implement Fast-Track queue splitting under 3× Surge Mode.
-
-### Step 4: Audit Trail & Cohort Loader
-- [x] Implement `triage/audit.py` with file-backed JSON logging.
-- [x] Implement `triage/cohort.py` pre-loading all 20 benchmark records.
-
-### Step 5: Interactive Streamlit Dashboard (`app.py`)
-- [x] Assemble the 3-tab UI.
-- [x] Add 1-click Preset Scenario buttons (Baby Leo `P-001`, Eleanor `P-002`, Marcus `P-003`, etc.).
-- [x] Build Clinician Override modal with required justification capture.
+### 10.1 The Four Architectural Pillars
+1. **Pillar 1: FHIR v4 Clinical Ingestion Gateway:** Embedded FastAPI listener (`/Observation`, `/Patient`, `/Encounter`) accepting direct JSON bundles from bedside vital monitors and hospital EHR systems.
+2. **Pillar 2: Distributed State Mesh (NATS JetStream + SQLite WAL):** Minimal friction adoption with zero database server setup; horizontally scales pub/sub across multi-nurse workstations with sub-millisecond synchronization.
+3. **Pillar 3: Local Med-Aligned SLM Core (`LLMTriageEngine`):** Sub-3B parameter open-weights model (e.g. Gemma-2-2B / Qwen2.5-1.5B) fine-tunable on local hospital triage records via QLoRA for free-text paramedic run-sheet entity extraction without cloud leaks.
+4. **Pillar 4: Facility Configuration Profiler:** Declarative YAML hospital profile schema adapting safe wait times and specialty triage paths between Rural Critical Access clinics and Level-1 Trauma centers.
 
 ---
 
-## 11. Verification & Acceptance Criteria
+## 11. Implementation Checklist (v1 Hardening)
+
+### Step 1: Data Contracts & High-Risk Meds (v1)
+- [ ] Extend `triage/models.py` with `medications: List[str]`, `allergies: List[str]`, `vitals_history: List[Vitals]`, and `pseudo_id`.
+- [ ] Update `triage/rules.py` with high-risk medication alerts (Warfarin/DOACs, insulin, antiplatelets, immunosuppressants).
+
+### Step 2: Expanded Multi-System VOI Bank (v1)
+- [ ] Expand `triage/voi.py` to 10 acute clinical rules (pediatric dehydration/fontanelle, surgical abdomen, sepsis hypoperfusion, anaphylaxis progression).
+
+### Step 3: HIPAA Safe Harbor Audit De-Identification (v1)
+- [ ] Update `triage/audit.py` with automated deterministic SHA-256 pseudonymization (`PT-HASH8`) at rest in `audit_log.json`.
+
+### Step 4: Vital Sign Velocity Tracking (v1)
+- [ ] Update `triage/queue.py` with $\Delta\text{Vitals}$ velocity scoring ($\Delta\text{SBP}$, $\Delta\text{HR}$, $\Delta\text{SpO}_2$) and rapid decompensation re-ranking.
+
+### Step 5: Clinical HUD & Benchmark Cohort Synchronization (v1)
+- [ ] Update `triage/cohort.py` with medication and serial vitals profiles.
+- [ ] Update `app.py` UI with medication alerts, expanded VOI prompts, vital trend graphs, and de-identified audit view.
+
+---
+
+## 12. Verification & Acceptance Criteria
 
 1. **Zero Runtime Dependencies beyond Standard Stack:** Runs cleanly with `pip install streamlit pandas pydantic`.
-2. **Sub-second Execution:** Every triage recommendation renders in $<50\text{ms}$ (actual: $\approx 0.8\text{ms}$).
+2. **Sub-second Execution:** Every triage recommendation renders in $<50\text{ms}$ (actual: $\approx 0.9\text{ms}$).
 3. **Cohort Coverage:** All 20 simulated patients evaluate correctly against their expected ESI band.
-4. **Surge & Breach Visibility:** Toggling 3× Surge immediately elevates waiting breach cases to the top and routes ESI 4/5 cases to Fast-Track.
-5. **Audit Integrity:** Every override writes a structured record to `audit_log.json` with timestamp, AI prediction, nurse override, and justification text.
+4. **Surge & Breach Visibility:** Toggling 3× Surge immediately elevates waiting breach cases and vital velocity decompensations to the top.
+5. **Audit Integrity & HIPAA Privacy:** Every override and event writes a structured de-identified record to `audit_log.json` with microsecond timestamp, AI prediction, nurse override, and justification text.

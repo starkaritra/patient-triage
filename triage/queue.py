@@ -1,15 +1,16 @@
 """
-Dynamic Deterioration Queue & 3× Surge Engine.
-Manages safe-wait time windows, real-time priority scores, and fast-track diversion.
+Dynamic Deterioration Queue & 3× Surge Engine (v1 Hardened).
+Manages safe-wait time windows, multi-parametric vital velocity degradation (Delta-Vitals),
+breach alerts, and fast-track diversion.
 """
 
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
-from triage.models import PatientRecord
+from triage.models import PatientRecord, Vitals
 
 
-# Maximum safe waiting thresholds in minutes (Section 5.1)
+# Maximum safe waiting thresholds in minutes (Section 6.1)
 SAFE_WAIT_THRESHOLDS: Dict[int, int] = {
     1: 0,     # Immediate bedding
     2: 10,    # Max 10 minutes
@@ -20,7 +21,7 @@ SAFE_WAIT_THRESHOLDS: Dict[int, int] = {
 
 
 class QueueRepository(ABC):
-    """Abstract interface for queue persistence (In-Memory vs Redis/SQL)."""
+    """Abstract interface for queue persistence (In-Memory vs Redis/NATS/SQL)."""
 
     @abstractmethod
     def add(self, patient: PatientRecord) -> None:
@@ -59,17 +60,37 @@ class InMemoryQueueRepository(QueueRepository):
 
 
 class PatientQueue:
-    """Active queue engine with deterioration scoring and surge adaptation."""
+    """Active queue engine with deterioration scoring, vital velocity tracking, and surge adaptation."""
 
     def __init__(self, repo: Optional[QueueRepository] = None):
         self.repo = repo or InMemoryQueueRepository()
         self.surge_mode: bool = False
 
     @staticmethod
-    def calculate_priority_score(patient: PatientRecord) -> float:
+    def calculate_vital_velocity_penalty(patient: PatientRecord) -> float:
         """
-        Priority Score Formula:
-        Score = (6 - ESI) * 100 + (Wait / SafeThreshold) * 50 + DeltaVitals
+        Computes vital deterioration velocity penalty when serial vitals are re-recorded.
+        Penalty = 1.5 * ΔHR + 2.5 * (-ΔSBP) + 5.0 * (-ΔSpO2)
+        """
+        if not patient.vitals_history:
+            return 0.0
+
+        initial = patient.vitals_history[0]
+        current = patient.vitals
+
+        # Positive values represent clinical deterioration
+        delta_hr_increase = max(0, current.heart_rate - initial.heart_rate)
+        delta_sbp_drop = max(0, initial.systolic_bp - current.systolic_bp)
+        delta_spo2_drop = max(0.0, initial.spo2 - current.spo2)
+
+        penalty = (delta_hr_increase * 1.5) + (delta_sbp_drop * 2.5) + (delta_spo2_drop * 5.0)
+        return round(penalty, 2)
+
+    @classmethod
+    def calculate_priority_score(cls, patient: PatientRecord) -> float:
+        """
+        Priority Score Invariant:
+        Score = (6 - ESI) * 100 + (Wait / SafeThreshold) * 50 + ΔVitalsPenalty + PainPenalty
         """
         esi = patient.effective_esi or 3
         safe_threshold = SAFE_WAIT_THRESHOLDS.get(esi, 30)
@@ -80,8 +101,9 @@ class PatientQueue:
         wait_penalty = wait_ratio * 50.0
 
         pain_penalty = (patient.vitals.pain_scale / 10.0) * 15.0
+        velocity_penalty = cls.calculate_vital_velocity_penalty(patient)
 
-        return round(base_tier_score + wait_penalty + pain_penalty, 2)
+        return round(base_tier_score + wait_penalty + pain_penalty + velocity_penalty, 2)
 
     @staticmethod
     def is_breach(patient: PatientRecord) -> bool:
@@ -114,7 +136,9 @@ class PatientQueue:
         for item in scored_patients:
             patient, score, is_breached = item
             esi = patient.effective_esi or 3
-            if esi in (4, 5) and not is_breached:
+            velocity = self.calculate_vital_velocity_penalty(patient)
+            # Only divert if stable, non-breached, and no rapid vital decompensation
+            if esi in (4, 5) and not is_breached and velocity == 0.0:
                 fast_track_queue.append(item)
             else:
                 main_queue.append(item)
@@ -127,13 +151,31 @@ class PatientQueue:
             p.wait_time_minutes += minutes
             self.repo.update(p)
 
-    def simulate_vital_decompensation(self, patient_id: str) -> Optional[PatientRecord]:
-        """Simulates acute vital deterioration for a waiting patient."""
+    def record_vital_update(self, patient_id: str, new_vitals: Vitals) -> Optional[PatientRecord]:
+        """Appends existing vitals to history and applies new vital measurements."""
         for p in self.repo.get_all():
             if p.id == patient_id:
-                p.vitals.systolic_bp = max(60, p.vitals.systolic_bp - 25)
-                p.vitals.heart_rate = min(170, p.vitals.heart_rate + 30)
-                p.vitals.spo2 = max(86.0, p.vitals.spo2 - 6.0)
+                p.vitals_history.append(p.vitals.model_copy(deep=True))
+                p.vitals = new_vitals
+                self.repo.update(p)
+                return p
+        return None
+
+    def simulate_vital_decompensation(self, patient_id: str) -> Optional[PatientRecord]:
+        """Simulates acute vital decompensation with history tracking."""
+        for p in self.repo.get_all():
+            if p.id == patient_id:
+                # Snapshot initial vitals if not already recorded
+                if not p.vitals_history:
+                    p.vitals_history.append(p.vitals.model_copy(deep=True))
+                
+                updated_vitals = p.vitals.model_copy(deep=True)
+                updated_vitals.systolic_bp = max(60, updated_vitals.systolic_bp - 25)
+                updated_vitals.heart_rate = min(175, updated_vitals.heart_rate + 35)
+                updated_vitals.spo2 = max(86.0, updated_vitals.spo2 - 6.0)
+                updated_vitals.recorded_at = datetime.utcnow()
+                
+                p.vitals = updated_vitals
                 self.repo.update(p)
                 return p
         return None

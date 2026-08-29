@@ -1,6 +1,7 @@
 """
 Triage Decision Core.
-Implements the abstract BaseTriageEngine contract and AlgorithmicTriageEngine.
+Implements the abstract BaseTriageEngine contract and AlgorithmicTriageEngine (v1).
+Features graded history completeness scoring, asymmetric safety bias, and active VOI synthesis.
 """
 
 import time
@@ -22,8 +23,8 @@ class BaseTriageEngine(ABC):
 
 class AlgorithmicTriageEngine(BaseTriageEngine):
     """
-    Deterministic safety-gate + rule-weighted clinical risk baseline.
-    Zero external dependencies, sub-millisecond execution.
+    Deterministic safety-gate + rule-weighted clinical risk baseline (v1).
+    Zero external dependencies, sub-millisecond execution (<1ms).
     """
 
     def evaluate(self, patient: PatientRecord) -> TriageResult:
@@ -34,9 +35,10 @@ class AlgorithmicTriageEngine(BaseTriageEngine):
         rule_hit, rule_risks, base_esi = evaluate_red_lines(patient)
         reasons.extend(rule_risks)
 
-        # Step 2: Compute Epistemic Confidence Penalties
+        # Step 2: Compute Graded Epistemic Confidence Penalties
         confidence, ambiguity_flags = self._calculate_confidence(patient, rule_hit)
         is_ambiguous = confidence < 0.70
+        reasons.extend([f"Epistemic Factor: {flag}" for flag in ambiguity_flags])
 
         # Step 3: Check Resource Requirements for Stable Cases
         if not rule_hit and base_esi >= 3:
@@ -48,7 +50,7 @@ class AlgorithmicTriageEngine(BaseTriageEngine):
         followup_questions = []
         if is_ambiguous:
             followup_questions = VOIEngine.get_candidate_questions(patient)
-            reasons.append(f"Epistemic confidence low ({int(confidence*100)}%). Active VOI query required.")
+            reasons.append(f"Epistemic confidence low ({int(confidence*100)}%). Active VOI query triggered.")
 
         # Step 5: Incorporate Clinician Answers to VOI Follow-Ups
         if patient.answers_to_followups:
@@ -79,28 +81,37 @@ class AlgorithmicTriageEngine(BaseTriageEngine):
         flags: List[str] = []
         penalty = 0.0
 
-        # 1. Missing history penalty (P_data = 0.15)
+        # 1. Graded history & medication penalty (P_data = 0.00 to 0.15)
         if patient.is_zero_history:
             penalty += 0.15
             flags.append("Zero medical history recorded (-15%)")
+        elif patient.is_partial_history:
+            penalty += 0.08
+            flags.append("Partial medical/medication records (-8%)")
 
         # 2. Vital variance / borderline penalty (P_vitals = 0.10)
         v = patient.vitals
         if v.age_category == AgeCategory.ADULT and (95 <= v.heart_rate <= 108 or 138 <= v.systolic_bp <= 145):
             penalty += 0.10
             flags.append("Borderline gray-zone vital signs (-10%)")
+        elif v.age_category == AgeCategory.GERIATRIC and (88 <= v.heart_rate <= 98 or 95 <= v.systolic_bp <= 105):
+            penalty += 0.10
+            flags.append("Borderline geriatric vital compensation (-10%)")
 
         # 3. Symptom ambiguity penalty (P_ambiguity = 0.20)
-        ambiguous_keywords = ["dizziness", "fatigue", "epigastric", "indigestion", "weakness", "debility", "palpitation"]
+        ambiguous_keywords = [
+            "dizziness", "fatigue", "epigastric", "indigestion", "weakness", "debility",
+            "palpitation", "colic", "vomiting", "diarrhea", "rash", "malaise"
+        ]
         if any(k in patient.chief_complaint.lower() for k in ambiguous_keywords):
             penalty += 0.20
             flags.append("High-entropy non-specific presentation (-20%)")
 
         # 4. Age risk penalty (P_age_risk = 0.10)
         if patient.vitals.age_category in (AgeCategory.INFANT, AgeCategory.GERIATRIC):
-            if any(k in patient.chief_complaint.lower() for k in ["debility", "low intake", "fever", "fatigue", "shivering"]):
+            if any(k in patient.chief_complaint.lower() for k in ["debility", "low intake", "fever", "fatigue", "shivering", "poor feeding"]):
                 penalty += 0.10
-                flags.append("High-risk vulnerable age group with systemic complaint (-10%)")
+                flags.append("Vulnerable age bracket presenting with systemic complaint (-10%)")
 
         confidence = max(0.40, 1.0 - penalty)
         if rule_hit and confidence < 0.85:
@@ -113,11 +124,11 @@ class AlgorithmicTriageEngine(BaseTriageEngine):
         complaint = patient.chief_complaint.lower()
 
         # ESI 5: Zero resource cases (suture removal, rx refill, minor superficial scrape)
-        if any(w in complaint for w in ["suture removal", "prescription", "refill", "superficial", "scrape", "minor abrasion"]):
+        if any(w in complaint for w in ["suture removal", "prescription", "refill", "superficial", "scrape", "minor abrasion", "dressing change"]):
             return 5, ["Expected ED Resources: 0 (Fast-Track non-urgent)"]
 
         # ESI 4: 1 resource cases (simple sprain/x-ray, hives/oral antihistamine, simple suture)
-        if any(w in complaint for w in ["ankle", "sprain", "twisted", "hives", "rash", "isolated laceration", "amoxicillin"]):
+        if any(w in complaint for w in ["ankle", "sprain", "twisted", "hives", "rash", "isolated laceration", "amoxicillin", "simple suture"]):
             return 4, ["Expected ED Resources: 1 (Plain X-ray, minor suture, or oral meds)"]
 
         # ESI 3: Multiple resources (Labs + IV + Imaging, e.g. acute RLQ pain, severe colic, chest workup)

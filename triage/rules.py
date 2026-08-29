@@ -1,6 +1,7 @@
 """
 Declarative Physiological Red-Lines and Age-Stratified Thresholds.
 Calibrated against Pediatric Early Warning Score (PEWS), NEWS2, and qSOFA protocols.
+v1 includes structured High-Risk Medication Profiling & Critical Syndrome Safety Stops.
 """
 
 from dataclasses import dataclass
@@ -115,38 +116,66 @@ class RuleRegistry:
     def evaluate_clinical_syndromes(patient: PatientRecord) -> Tuple[bool, List[str], Optional[int]]:
         complaint_lower = patient.chief_complaint.lower()
         history_lower = [h.lower() for h in patient.history]
+        meds_lower = [m.lower() for m in patient.medications]
+        all_hx_meds = " ".join(history_lower + meds_lower)
+        
         risks: List[str] = []
         esi_target: Optional[int] = None
         hit = False
 
+        # Pediatric Airway Threat
         if patient.vitals.age_category in (AgeCategory.INFANT, AgeCategory.CHILD):
-            if any(w in complaint_lower for w in ["stridor", "barking cough", "drooling", "lethargy"]):
+            if any(w in complaint_lower for w in ["stridor", "barking cough", "drooling", "lethargy", "sunken fontanelle"]):
                 hit = True
-                risks.append("Pediatric Airway Threat / Impending Obstruction")
+                risks.append("Pediatric Airway / Metabolic Threat (Impending Decompensation)")
                 esi_target = 2
 
+        # Acute Meningitis / Nuchal Rigidity
         if any(w in complaint_lower for w in ["neck stiffness", "photophobia", "violent headache", "nuchal rigidity"]):
             if patient.vitals.temp_celsius >= 38.0:
                 hit = True
                 risks.append("Acute Meningitis Red Flag (Fever + Meningismus)")
                 esi_target = 2
 
+        # Tearing Pain (AAA / Aortic Dissection)
         if ("tearing" in complaint_lower or "ripping" in complaint_lower) and ("back" in complaint_lower or "chest" in complaint_lower):
             hit = True
             risks.append("Vascular Catastrophe: Tearing pain (Suspected Dissection/AAA)")
             esi_target = 1 if patient.vitals.systolic_bp < 90 else 2
 
-        has_anticoagulant = any("warfarin" in h or "eliquis" in h or "xarelto" in h or "blood thinner" in h for h in history_lower)
-        if ("fall" in complaint_lower or "head" in complaint_lower) and (has_anticoagulant or patient.vitals.age_category == AgeCategory.GERIATRIC):
+        # High-Risk Medication Profiling (Anticoagulants / DOACs + Head/Trauma)
+        has_anticoagulant = any(a in all_hx_meds for a in ["warfarin", "eliquis", "xarelto", "coumadin", "apixaban", "blood thinner", "heparin"])
+        if ("fall" in complaint_lower or "head" in complaint_lower or "trauma" in complaint_lower or "hit" in complaint_lower):
             if has_anticoagulant:
                 hit = True
                 risks.append("High-Risk Trauma on Anticoagulation (Intracranial Bleed Risk)")
                 esi_target = 2
+            elif patient.vitals.age_category == AgeCategory.GERIATRIC:
+                risks.append("Geriatric Fall / Trauma Risk (Potential Occult Bleed)")
 
+        # Immunocompromised Fever Alert
+        has_immunosuppression = any(im in all_hx_meds for im in ["chemotherapy", "prednisone", "methotrexate", "tacrolimus", "transplant", "cancer"])
+        if has_immunosuppression and patient.vitals.temp_celsius >= 38.0:
+            hit = True
+            risks.append("Neutropenic / Immunocompromised Fever Alert (High Sepsis Mortality Risk)")
+            esi_target = 2
+
+        # Anaphylaxis vs Simple Urticaria Progression Check
+        if ("hive" in complaint_lower or "rash" in complaint_lower or "allergic" in complaint_lower):
+            if any(w in complaint_lower for w in ["lip", "tongue", "throat", "dyspnea", "wheeze", "swallowing"]):
+                hit = True
+                risks.append("Acute Anaphylaxis Red-Line (Airway / Respiratory Involvement)")
+                esi_target = 2
+
+        # Upper Airway Threat
         if ("drooling" in complaint_lower or "muffled voice" in complaint_lower) and "throat" in complaint_lower:
             hit = True
             risks.append("Upper Airway Threat (Peritonsillar Abscess / Epiglottitis)")
             esi_target = 2
+
+        # High-Risk Meds Summary Alert
+        for med_alert in patient.high_risk_med_alerts:
+            risks.append(f"Medication Alert: {med_alert}")
 
         return hit, risks, esi_target
 

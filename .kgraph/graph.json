@@ -1,11 +1,11 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "project": {
     "name": "PatientTriage.ai",
     "summary": "Explainable, safety-biased clinical decision-support triage system with dynamic deterioration tracking, active VOI questioning, and regulatory audit trail.",
     "root": "C:\\Code\\patient-triage",
     "created_at": "2026-08-30T00:30:00Z",
-    "updated_at": "2026-08-30T00:30:00Z"
+    "updated_at": "2026-08-30T01:05:00Z"
   },
   "nodes": {
     "app": {
@@ -18,15 +18,15 @@
     "triage.models": {
       "key": "triage.models",
       "type": "data",
-      "label": "Clinical Data Contracts",
-      "summary": "Pydantic v2 schemas: PatientRecord, Vitals, AgeCategory, ESILevel, TriageResult.",
+      "label": "Clinical Data Contracts (v1)",
+      "summary": "Pydantic v2 schemas: PatientRecord (with medications, allergies, vitals_history), Vitals, AgeCategory, ESILevel, TriageResult.",
       "file": "triage/models.py"
     },
     "triage.rules": {
       "key": "triage.rules",
       "type": "component",
-      "label": "Physiological Red-Lines",
-      "summary": "Age-stratified deterministic vital thresholds & red-lines (PEWS, NEWS2, qSOFA).",
+      "label": "Physiological & Medication Red-Lines (v1)",
+      "summary": "Age-stratified deterministic vital thresholds (PEWS, NEWS2, qSOFA) & high-risk medication danger alerts.",
       "file": "triage/rules.py"
     },
     "triage.engine": {
@@ -39,29 +39,29 @@
     "triage.voi": {
       "key": "triage.voi",
       "type": "component",
-      "label": "Active Value-of-Information (VOI) Engine",
-      "summary": "Entropy-reducing clinical follow-up question bank triggered when confidence < 70%.",
+      "label": "Expanded Active VOI Engine (v1: 10 Rules)",
+      "summary": "Entropy-reducing clinical follow-up question bank across 10 acute emergency presentation categories.",
       "file": "triage/voi.py"
     },
     "triage.queue": {
       "key": "triage.queue",
       "type": "component",
-      "label": "Dynamic Queue & Deterioration Radar",
-      "summary": "Safe wait-time degradation, re-triage breach alerts, and 3x surge mode routing.",
+      "label": "Dynamic Queue & Deterioration Radar (v1: Vital Velocity)",
+      "summary": "Safe wait-time degradation, vital velocity tracking (Delta-SBP/HR/SpO2), breach alerts, and 3x surge mode routing.",
       "file": "triage/queue.py"
     },
     "triage.audit": {
       "key": "triage.audit",
       "type": "component",
-      "label": "Immutable Audit Trail",
-      "summary": "Append-only audit ledger recording AI suggestions, VOI Q&A, and clinician overrides with justifications.",
+      "label": "HIPAA De-Identified Audit Trail (v1)",
+      "summary": "Append-only audit ledger recording AI suggestions, VOI Q&A, and clinician overrides with SHA-256 pseudonymization at rest.",
       "file": "triage/audit.py"
     },
     "triage.cohort": {
       "key": "triage.cohort",
       "type": "data",
-      "label": "20-Patient Benchmark Cohort",
-      "summary": "Pre-configured synthetic test patients across pediatric, adult, and geriatric clinical presentations.",
+      "label": "20-Patient Multi-Age Benchmark Cohort",
+      "summary": "Synthetic test patients across pediatric, adult, and geriatric clinical presentations with medications & serial vitals.",
       "file": "triage/cohort.py"
     },
     "dec.001": {
@@ -82,21 +82,56 @@
       "key": "dec.003",
       "type": "decision",
       "label": "DEC-003: Pluggable Repository Pattern",
-      "summary": "Supports in-memory dev execution and production Redis/SQL queue/audit backends.",
+      "summary": "Supports in-memory dev execution and production Redis/NATS/SQL queue/audit backends.",
+      "file": "decisions.md"
+    },
+    "dec.004": {
+      "key": "dec.004",
+      "type": "decision",
+      "label": "DEC-004: Graded History & Medication Profiling (v1)",
+      "summary": "Scores continuous history completeness and flags high-risk medication categories.",
+      "file": "decisions.md"
+    },
+    "dec.005": {
+      "key": "dec.005",
+      "type": "decision",
+      "label": "DEC-005: Multi-System VOI Bank (v1)",
+      "summary": "Expands to 10 acute clinical syndrome triggers and reciprocal entropy reduction.",
+      "file": "decisions.md"
+    },
+    "dec.006": {
+      "key": "dec.006",
+      "type": "decision",
+      "label": "DEC-006: HIPAA Safe Harbor Pseudonymization (v1)",
+      "summary": "Deterministic SHA-256 tokenization (PT-HASH8) of patient identities in audit storage at rest.",
+      "file": "decisions.md"
+    },
+    "dec.007": {
+      "key": "dec.007",
+      "type": "decision",
+      "label": "DEC-007: Vital Sign Velocity Tracking (v1)",
+      "summary": "Parametric velocity scoring over serial vitals history to catch rapid decompensation before breach.",
+      "file": "decisions.md"
+    },
+    "dec.008": {
+      "key": "dec.008",
+      "type": "decision",
+      "label": "DEC-008: Future Horizon (v2) Distributed & SLM Architecture",
+      "summary": "FastAPI FHIR v4, NATS JetStream mesh, fine-tunable local clinical SLM (Gemma-2-2B/Qwen2.5-1.5B), and YAML profiler.",
       "file": "decisions.md"
     },
     "metric.confidence": {
       "key": "metric.confidence",
       "type": "metric",
-      "label": "Confidence Formula (0.0–1.0)",
+      "label": "Graded Confidence Formula (0.0–1.0)",
       "summary": "1.0 - P(data) - P(vitals) - P(ambiguity) - P(age_risk). Triggers VOI when < 0.70.",
-      "file": "handoff.md"
+      "file": "architecture.md"
     },
     "metric.priority_score": {
       "key": "metric.priority_score",
       "type": "metric",
-      "label": "Queue Priority Invariant",
-      "summary": "(6 - ESI)*100 + (WaitTime / SafeThreshold)*50 + Delta Vitals Penalty.",
+      "label": "Dynamic Priority & Velocity Score",
+      "summary": "(6 - ESI)*100 + (WaitTime / SafeThreshold)*50 + Delta Vitals Velocity + Pain.",
       "file": "architecture.md"
     }
   },
@@ -163,23 +198,33 @@
     },
     {
       "src": "triage.models",
-      "dst": "dec.001",
+      "dst": "dec.004",
       "rel": "relates_to"
     },
     {
-      "src": "triage.rules",
-      "dst": "dec.002",
+      "src": "triage.voi",
+      "dst": "dec.005",
+      "rel": "relates_to"
+    },
+    {
+      "src": "triage.audit",
+      "dst": "dec.006",
       "rel": "relates_to"
     },
     {
       "src": "triage.queue",
-      "dst": "dec.003",
+      "dst": "dec.007",
+      "rel": "relates_to"
+    },
+    {
+      "src": "triage.engine",
+      "dst": "dec.008",
       "rel": "relates_to"
     }
   ],
   "facts": [
     {
-      "fact": "Evaluation latency SLA is strictly under 50ms (deterministic core runs in ~0.8ms).",
+      "fact": "Evaluation latency SLA is strictly under 50ms (deterministic core runs in ~0.9ms in v1).",
       "source": "architecture.md:14",
       "node": "triage.engine"
     },
@@ -199,8 +244,8 @@
       "node": "triage.voi"
     },
     {
-      "fact": "Every clinician override requires a mandatory justification and writes an immutable audit record.",
-      "source": "handoff.md:198",
+      "fact": "Patient identity in audit storage at rest is pseudonymized with deterministic SHA-256 hashing for HIPAA compliance.",
+      "source": "decisions.md:75",
       "node": "triage.audit"
     }
   ]
