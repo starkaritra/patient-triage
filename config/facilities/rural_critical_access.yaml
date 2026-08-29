@@ -1,0 +1,20 @@
+facility_id: "rural_critical_access"
+facility_name: "Pine Creek Critical Access Hospital"
+tier: "Critical Access Rural Clinic"
+safe_wait_thresholds_minutes:
+  1: 0
+  2: 10
+  3: 30
+  4: 60
+  5: 120
+resource_capabilities:
+  has_ct_scanner: false
+  has_mri: false
+  has_cath_lab: false
+  has_pediatric_icu: false
+  has_trauma_resus_bay: false
+surge_trigger_occupancy_pct: 75.0
+fast_track_enabled: false
+auto_transfer_protocols:
+  escalate_uncontrolled_stroke_for_transfer: true
+  escalate_pediatric_hypoxemia_for_airlift: true

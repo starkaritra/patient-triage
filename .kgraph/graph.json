@@ -20,7 +20,7 @@
       "type": "service",
       "label": "FastAPI FHIR v4 Ingestion Gateway",
       "summary": "RESTful HL7 FHIR v4 listener (/Observation, /Patient, /Bundle) with RiskAssessment resource export.",
-      "file": "architecture.md"
+      "file": "triage/api.py"
     },
     "triage.models": {
       "key": "triage.models",
@@ -76,7 +76,7 @@
       "type": "component",
       "label": "Declarative Facility Profile Engine",
       "summary": "Loads YAML facility profiles (Level 1 Trauma vs Rural Access) for dynamic threshold and resource adaptation.",
-      "file": "architecture.md"
+      "file": "triage/facility.py"
     },
     "dec.001": {
       "key": "dec.001",

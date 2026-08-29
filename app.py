@@ -1,21 +1,26 @@
 """
-PatientTriage.ai — Clinical Decision Support HUD (v1 Hardened & Responsive).
-A clean, visual-first responsive dashboard designed for rapid clinical triage assessment,
-dynamic deterioration radar monitoring, and immutable regulatory compliance logging.
+PatientTriage.ai — Clinical Decision Support HUD (v2 Hardened & Multi-Facility).
+Features:
+- Workstation 1: Real-time Intake & Neurosymbolic SLM Triage with Active VOI & Paramedic Run-Sheet Parser
+- Workstation 2: Dynamic Deterioration Radar with Concurrent SQLite WAL Persistence & Vital Velocity
+- Workstation 3: Immutable Regulatory Audit Stream (HIPAA Safe Harbor SHA-256) & FHIR v4 Gateway
 """
 
+import json
 import streamlit as st
 import pandas as pd
 from datetime import datetime
 from triage.models import PatientRecord, Vitals
-from triage.engine import AlgorithmicTriageEngine
-from triage.queue import PatientQueue
+from triage.engine import AlgorithmicTriageEngine, LLMTriageEngine, SLMEntityExtractor
+from triage.facility import FacilityProfile, list_available_facilities, load_facility_profile
+from triage.queue import PatientQueue, SqliteQueueRepository
 from triage.audit import AuditLogger
+from triage.api import FHIRAdapter
 from triage.cohort import load_benchmark_cohort
 
 # Page Configuration
 st.set_page_config(
-    page_title="PatientTriage.ai | Clinical HUD",
+    page_title="PatientTriage.ai | Clinical HUD v2",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -133,7 +138,6 @@ st.markdown("""
         }
     }
 
-    /* Clean Divider */
     hr {
         margin: 16px 0;
         border: 0;
@@ -145,22 +149,48 @@ st.markdown("""
 # Session State Singletons
 if "engine" not in st.session_state:
     st.session_state.engine = AlgorithmicTriageEngine()
+if "llm_engine" not in st.session_state:
+    st.session_state.llm_engine = LLMTriageEngine()
 if "queue" not in st.session_state:
-    queue = PatientQueue()
-    for p in load_benchmark_cohort():
-        res = st.session_state.engine.evaluate(p)
-        p.assigned_esi = res.esi_level
-        queue.repo.add(p)
+    queue = PatientQueue(repo=SqliteQueueRepository())
+    existing = queue.repo.get_all()
+    if not existing:
+        for p in load_benchmark_cohort():
+            res = st.session_state.engine.evaluate(p)
+            p.assigned_esi = res.esi_level
+            queue.repo.add(p)
     st.session_state.queue = queue
 if "audit_logger" not in st.session_state:
     st.session_state.audit_logger = AuditLogger()
 if "clinician_id" not in st.session_state:
     st.session_state.clinician_id = "RN-4402"
 
-# Sidebar Telemetry & System Actions
+# Sidebar Telemetry & Facility Profiler
+st.sidebar.markdown("### Facility Configuration")
+available_facs = list_available_facilities()
+fac_labels = {
+    "community_hospital": "Community General Hospital",
+    "level1_trauma": "Metropolitan Level 1 Trauma Center",
+    "rural_critical_access": "Pine Creek Critical Access Hospital",
+}
+selected_fac_id = st.sidebar.selectbox(
+    "Active Facility Profile",
+    available_facs,
+    index=0,
+    format_func=lambda fid: fac_labels.get(fid, fid.replace("_", " ").title())
+)
+active_facility = load_facility_profile(selected_fac_id)
+st.session_state.queue.set_facility(active_facility)
+
+st.sidebar.text(f"Tier: {active_facility.tier}")
+st.sidebar.text(f"CT Available: {'Yes' if active_facility.resource_capabilities.has_ct_scanner else 'No (Plain X-Ray)'}")
+st.sidebar.text(f"Cath Lab: {'Yes' if active_facility.resource_capabilities.has_cath_lab else 'No'}")
+
+st.sidebar.divider()
 st.sidebar.markdown("### System Telemetry")
 st.sidebar.text(f"Clinician ID: {st.session_state.clinician_id}")
-st.sidebar.text("Engine Core: Algorithmic v1 (<1ms)")
+st.sidebar.text("Engine: Neurosymbolic v2 (<1ms)")
+st.sidebar.text("Persistence: SQLite WAL (Active)")
 st.sidebar.text("Privacy: HIPAA SHA-256")
 
 st.sidebar.divider()
@@ -181,7 +211,7 @@ if col_sb2.button("Reset Queue", use_container_width=True):
         st.session_state.queue.repo.add(p)
     st.rerun()
 
-# Compute Global Telemetry
+# Global Telemetry Computation
 all_patients = st.session_state.queue.repo.get_all()
 breached_count = sum(1 for p in all_patients if st.session_state.queue.is_breach(p))
 decompensating_count = sum(1 for p in all_patients if PatientQueue.calculate_vital_velocity_penalty(p) > 0)
@@ -209,7 +239,7 @@ st.markdown(f"""
         <div class="kpi-sub {'alert' if decompensating_count else 'ok'}">{'Deterioration Detected: ' + str(decompensating_count) if decompensating_count else 'All Vitals Stable'}</div>
     </div>
     <div class="kpi-card">
-        <div class="kpi-label">Re-Triage Breaches</div>
+        <div class="kpi-label">Re-Triage Breaches ({active_facility.facility_name[:14]})</div>
         <div class="kpi-val" style="color: {'#F87171' if breached_count else '#F8FAFC'};">{breached_count}</div>
         <div class="kpi-sub {'alert' if breached_count else 'ok'}">{'Action Required' if breached_count else 'Within Safe Windows'}</div>
     </div>
@@ -218,15 +248,28 @@ st.markdown(f"""
 
 # Tab Workstations
 tab_intake, tab_radar, tab_audit = st.tabs([
-    "Intake & Clinical Decision Scorer",
+    "Intake & Neurosymbolic Scorer",
     "Waiting Room Deterioration Radar",
-    "Immutable Audit & Override Ledger",
+    "FHIR v4 Bridge & Immutable Audit Ledger",
 ])
 
 # -------------------------------------------------------------
-# WORKSTATION 1: INTAKE & CLINICAL DECISION SCORER
+# WORKSTATION 1: INTAKE & NEUROSYMBOLIC SCORER
 # -------------------------------------------------------------
 with tab_intake:
+    # Free-Text Paramedic Ingestion Drawer
+    with st.expander("Paramedic Run-Sheet & Free-Text Note Ingestion (Clinical SLM)", expanded=False):
+        st.markdown("Paste unstructured paramedic radio report, EMS transfer sheet, or nurse triage narrative:")
+        sample_note = "Paramedic report: 74yo female found slumped on kitchen floor with sudden left facial droop and slurred speech. HR: 112 bpm, BP: 175/95, RR: 20, SpO2: 94%, Temp: 36.8C, Pain: 4/10. Patient has history of hypertension and taking Warfarin daily."
+        free_text_input = st.text_area("Triage Free-Text Narrative", value=sample_note, height=90)
+        
+        if st.button("Parse Note with Clinical SLM & Add to Queue", use_container_width=True):
+            parsed_patient, slm_result = st.session_state.llm_engine.evaluate_narrative(free_text_input)
+            parsed_patient.assigned_esi = slm_result.esi_level
+            st.session_state.queue.repo.add(parsed_patient)
+            st.success(f"Parsed narrative for {parsed_patient.name} ({parsed_patient.pseudo_id}) -> Assigned ESI {slm_result.esi_level}!")
+            st.rerun()
+
     col_sel1, col_sel2 = st.columns([3, 1])
     patient_names = [f"{p.id} | {p.pseudo_id} -- {p.name} ({p.vitals.age_category.value.title()}, {p.vitals.age:.1f}y)" for p in all_patients]
     selected_idx = col_sel1.selectbox("Select Patient from Intake / Waiting Fleet", range(len(patient_names)), format_func=lambda i: patient_names[i])
@@ -334,7 +377,6 @@ with tab_intake:
         st.markdown("#### Clinical Findings & Diagnostic Rationale")
         st.markdown(f"**Presenting Complaint:** *{current_patient.chief_complaint}*")
         
-        # Clinical Finding Items
         for item in result.explanation:
             st.markdown(f"-- {item}")
 
@@ -416,7 +458,7 @@ with tab_radar:
             })
         return pd.DataFrame(data)
 
-    st.markdown("#### Main Emergency Queue (Ranked by Deterioration Score)")
+    st.markdown(f"#### Main Emergency Queue (Facility: {active_facility.facility_name})")
     if main_q:
         df_main = build_clean_queue_df(main_q)
         st.dataframe(df_main, use_container_width=True, hide_index=True)
@@ -446,15 +488,64 @@ with tab_radar:
                 st.rerun()
 
 # -------------------------------------------------------------
-# WORKSTATION 3: IMMUTABLE AUDIT & OVERRIDE LEDGER
+# WORKSTATION 3: FHIR V4 BRIDGE & IMMUTABLE AUDIT LEDGER
 # -------------------------------------------------------------
 with tab_audit:
-    events = st.session_state.audit_logger.repo.get_events()
-    
-    col_aud1, col_aud2 = st.columns([3, 1])
-    col_aud1.markdown("#### Regulatory Audit Trail")
-    col_aud2.markdown(f"**Total Events:** `{len(events)}` | **De-Identification:** `SHA-256 Active`")
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        st.markdown("#### HL7 FHIR v4 Payload Ingestion Sandbox")
+        st.markdown("Simulate bedside telemetry injection via FHIR v4 Observation bundle:")
+        if st.button("Inject Sample Bedside FHIR Bundle", use_container_width=True):
+            sample_bundle = {
+                "resourceType": "Bundle",
+                "id": "BUNDLE-SIM-001",
+                "entry": [
+                    {
+                        "resource": {
+                            "resourceType": "Patient",
+                            "id": "PT-FHIR-SIM",
+                            "name": [{"given": ["Arthur"], "family": "Pendelton"}],
+                            "birthDate": "1954-06-20",
+                            "extension": [{"url": "http://hl7.org/fhir/StructureDefinition/patient-medication", "valueString": "Warfarin 5mg daily"}]
+                        }
+                    },
+                    {
+                        "resource": {
+                            "resourceType": "Observation",
+                            "code": {"coding": [{"system": "http://loinc.org", "code": "8867-4"}]},
+                            "valueQuantity": {"value": 118}
+                        }
+                    },
+                    {
+                        "resource": {
+                            "resourceType": "Observation",
+                            "code": {"coding": [{"system": "http://loinc.org", "code": "8480-6"}]},
+                            "valueQuantity": {"value": 85}
+                        }
+                    },
+                    {
+                        "resource": {
+                            "resourceType": "Encounter",
+                            "reasonCode": [{"text": "Bedside Telemetry: Acute drop in SBP with tachycardia on Warfarin"}]
+                        }
+                    }
+                ]
+            }
+            fhir_patient = FHIRAdapter.parse_bundle(sample_bundle)
+            fhir_res = st.session_state.engine.evaluate(fhir_patient)
+            fhir_patient.assigned_esi = fhir_res.esi_level
+            st.session_state.queue.repo.add(fhir_patient)
+            risk_doc = FHIRAdapter.export_risk_assessment(fhir_patient, fhir_res)
+            st.success(f"FHIR Bundle ingested for {fhir_patient.name} ({fhir_patient.pseudo_id}) -> ESI {fhir_res.esi_level}")
+            st.json(risk_doc)
 
+    with col_f2:
+        st.markdown("#### Regulatory Audit Trail")
+        events = st.session_state.audit_logger.repo.get_events()
+        st.markdown(f"**Total Events:** `{len(events)}` | **De-Identification:** `SHA-256 Active`")
+
+    st.divider()
+    events = st.session_state.audit_logger.repo.get_events()
     if events:
         for ev in reversed(events):
             token = ev.get("pseudonymized_token", ev.get("patient_id"))

@@ -1,0 +1,17 @@
+facility_id: "level1_trauma"
+facility_name: "Metropolitan Level 1 Trauma Center"
+tier: "Level 1 Comprehensive Trauma Center"
+safe_wait_thresholds_minutes:
+  1: 0
+  2: 10
+  3: 20
+  4: 45
+  5: 90
+resource_capabilities:
+  has_ct_scanner: true
+  has_mri: true
+  has_cath_lab: true
+  has_pediatric_icu: true
+  has_trauma_resus_bay: true
+surge_trigger_occupancy_pct: 85.0
+fast_track_enabled: true

@@ -1,0 +1,17 @@
+facility_id: "community_hospital"
+facility_name: "Community General Hospital"
+tier: "Level 3 Emergency Department"
+safe_wait_thresholds_minutes:
+  1: 0
+  2: 10
+  3: 30
+  4: 60
+  5: 120
+resource_capabilities:
+  has_ct_scanner: true
+  has_mri: false
+  has_cath_lab: false
+  has_pediatric_icu: false
+  has_trauma_resus_bay: true
+surge_trigger_occupancy_pct: 80.0
+fast_track_enabled: true
