@@ -64,7 +64,7 @@ The clinical dashboard will open in your browser at `http://localhost:8501`.
 * **Age-Stratified Physiological Red-Lines:** Deterministic safety stops calibrated against PEWS (Pediatric), NEWS2 (Adult), and qSOFA (Geriatric) with sub-millisecond evaluation (<1ms SLA).
 * **Asymmetric Clinical Safety Bias:** Missing an emergent patient (*under-triage*) is weighted 10x worse than over-triage; epistemic uncertainty (<70% confidence) automatically escalates acuity by +1 tier.
 * **Expanded 10-Rule Active VOI Engine:** Targeted clinical follow-up prompts across Cardiovascular, Neurological, Pediatric, Surgical Abdomen, Immunologic, and Infectious syndromes with 1-click nurse action pills.
-* **Vital Sign Velocity Radar ($\Delta\text{Vitals}$):** Multi-parametric deterioration scoring ($\Delta\text{SBP}$, $\Delta\text{HR}$, $\Delta\text{SpO}_2$) detects rapid decompensation before clinical time breaches.
+* **Vital Sign Velocity Radar (ΔVitals):** Multi-parametric deterioration scoring (ΔSBP, ΔHR, ΔSpO<sub>2</sub>) detects rapid decompensation before clinical time breaches.
 * **Declarative Facility Profiles (Pillar 4):** YAML-driven configuration adapting safe-wait windows, imaging capabilities (CT/MRI/Cath-lab), and transfer protocols between **Level-1 Trauma Centers**, **Community Hospitals**, and **Rural Critical Access Clinics**.
 * **Concurrent SQLite WAL Queue (Pillar 2):** Persistent, multi-workstation state synchronization with zero external database setup.
 * **HL7 FHIR v4 Interoperability (Pillar 1):** Ingests standard FHIR `Observation` bundles (LOINC codes) and exports compliant FHIR `RiskAssessment` resources.

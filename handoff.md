@@ -19,7 +19,7 @@ Build an explainable, safety-biased clinical decision-support triage system that
 
 ### 1.2 Core Architectural Principle: Swappable Decision Core
 The system is built on an abstract interface (`BaseTriageEngine`). 
-- **Round 2 Baseline:** Fully deterministic physiological red-lines + statistical/heuristic scoring model + rule-indexed VOI question bank (runs locally, zero API dependency, $<50\text{ms}$ latency).
+- **Round 2 Baseline:** Fully deterministic physiological red-lines + statistical/heuristic scoring model + rule-indexed VOI question bank (runs locally, zero API dependency, < 50 ms latency).
 - **Future Extension:** Pluggable Fine-Tuned LLM or RAG differential agent by implementing a single adapter class without touching the UI, queue, or audit layers.
 
 ---
@@ -75,13 +75,17 @@ Thresholds are dynamically selected based on `age_category`:
 | **Heart Rate (HR)** | Normal: 100–160<br>Critical: >180 / <80 | Normal: 70–120<br>Critical: >140 / <60 | Normal: 60–100<br>Critical: >120 / <50 | Normal: 60–90<br>Critical: >105 / <50 |
 | **Respiratory (RR)** | Normal: 30–50<br>Critical: >60 / <20 | Normal: 18–30<br>Critical: >40 / <14 | Normal: 12–20<br>Critical: >28 / <10 | Normal: 12–20<br>Critical: >26 / <10 |
 | **Systolic BP (SBP)**| Normal: 70–100<br>Critical: <70 | Normal: 85–115<br>Critical: <80 | Normal: 100–140<br>Critical: <90 / >190 | Normal: 110–145<br>Critical: <95 / >190 |
-| **Temperature** | Fever: >38.0°C<br>Critical: $\ge$38.5°C | Fever: >38.3°C<br>Critical: $\ge$39.0°C | Fever: >38.3°C<br>Critical: $\ge$39.5°C | Hypothermia: <35.5°C<br>Fever: >37.8°C |
-| **$\text{SpO}_2$** | Critical: <94% | Critical: <93% | Critical: <92% | Critical: <91% |
+| **Temperature** | Fever: >38.0°C<br>Critical: ≥38.5°C | Fever: >38.3°C<br>Critical: ≥39.0°C | Fever: >38.3°C<br>Critical: ≥39.5°C | Hypothermia: <35.5°C<br>Fever: >37.8°C |
+| **SpO<sub>2</sub>** | Critical: <94% | Critical: <93% | Critical: <92% | Critical: <91% |
 
 ### 3.2 Asymmetric Clinical Loss Function
-Missing a critical case (**under-triage**) is $10\times$ worse than over-prioritizing a stable patient (**over-triage**):
-$$\text{Loss}(\text{True ESI } 1/2 \to \text{Assigned ESI } 3/4) \gg \text{Loss}(\text{True ESI } 4 \to \text{Assigned ESI } 3)$$
-- **Rule:** If epistemic confidence is low ($<70\%$) on any high-risk symptom, the engine defaults to **escalating urgency by +1 tier** rather than defaulting to average acuity.
+Missing a critical case (**under-triage**) is 10× worse than over-prioritizing a stable patient (**over-triage**):
+
+```math
+\text{Loss}(\text{True ESI } 1/2 \to \text{Assigned ESI } 3/4) \gg \text{Loss}(\text{True ESI } 4 \to \text{Assigned ESI } 3)
+```
+
+- **Rule:** If epistemic confidence is low (< 70%) on any high-risk symptom, the engine defaults to **escalating urgency by +1 tier** rather than defaulting to average acuity.
 
 ---
 
@@ -179,23 +183,26 @@ class AlgorithmicTriageEngine(BaseTriageEngine):
 
 ### 5.1 Confidence Score Formula
 Confidence is derived from 4 penalized dimensions:
-$$\text{Confidence} = 1.0 - P_{\text{data}} - P_{\text{vitals}} - P_{\text{ambiguity}} - P_{\text{age\_risk}}$$
 
-1. **Missing History Penalty ($P_{\text{data}}$):** $0.15$ if `len(patient.history) == 0` (Zero-history patient).
-2. **Vital Variance Penalty ($P_{\text{vitals}}$):** $0.10$ if vitals lie in borderline gray zones (e.g., HR 98–105 in adult).
-3. **Symptom Ambiguity Penalty ($P_{\text{ambiguity}}$):** $0.20$ if complaint matches high-entropy differential sets (e.g., "Dizziness", "Fatigue", "Epigastric discomfort").
-4. **Age Risk Penalty ($P_{\text{age\_risk}}$):** $0.10$ for infants ($<1\text{ yr}$) or geriatric patients ($>75\text{ yrs}$) presenting with non-specific systemic symptoms.
+```math
+\text{Confidence} = 1.0 - P_{\text{data}} - P_{\text{vitals}} - P_{\text{ambiguity}} - P_{\text{age\_risk}}
+```
+
+1. **Missing History Penalty (P<sub>data</sub>):** 0.15 if `len(patient.history) == 0` (Zero-history patient).
+2. **Vital Variance Penalty (P<sub>vitals</sub>):** 0.10 if vitals lie in borderline gray zones (e.g., HR 98–105 in adult).
+3. **Symptom Ambiguity Penalty (P<sub>ambiguity</sub>):** 0.20 if complaint matches high-entropy differential sets (e.g., "Dizziness", "Fatigue", "Epigastric discomfort").
+4. **Age Risk Penalty (P<sub>age_risk</sub>):** 0.10 for infants (< 1 yr) or geriatric patients (> 75 yrs) presenting with non-specific systemic symptoms.
 
 ### 5.2 VOI (Value of Information) Question Mapping
-When $\text{Confidence} < 0.70$, `triage/voi.py` triggers targeted clinical checks:
+When Confidence < 0.70, `triage/voi.py` triggers targeted clinical checks:
 
 | Presenting Symptom / Category | Trigger Condition | High-Yield VOI Follow-Up Question | Impact on Re-assessment |
 | :--- | :--- | :--- | :--- |
-| **Epigastric Pain / Indigestion** | Adult/Geriatric, Diabetic or Female | *"Is there associated diaphoresis, nausea, or radiation to jaw/arm?"* | If Yes $\to$ Escalates to **ESI 2** (Atypical ACS). |
-| **Vague Dizziness / Imbalance** | Geriatric or Hypertensive | *"Are there unilateral facial droop, arm drift, or speech changes (FAST)?"* | If Yes $\to$ Escalates to **ESI 2** (Stroke Alert). |
-| **Calf Pain / Swelling** | Female on OCP or Recent Immobility | *"Is there unilateral leg swelling or shortness of breath on exertion?"* | If Yes $\to$ Escalates to **ESI 2** (DVT/PE risk). |
-| **High Fever** | Infant (<1 yr) | *"Is the infant making wet diapers and making eye contact?"* | If No $\to$ Escalates to **ESI 2** (Decompensated sepsis). |
-| **Palpitations & Paresthesia** | Young adult, SpO2 100% | *"Is there lightheadedness, chest pressure, or history of SVT?"* | If Yes $\to$ ESI 2/3 (ECG check); If No $\to$ ESI 4 (Panic check). |
+| **Epigastric Pain / Indigestion** | Adult/Geriatric, Diabetic or Female | *"Is there associated diaphoresis, nausea, or radiation to jaw/arm?"* | If Yes → Escalates to **ESI 2** (Atypical ACS). |
+| **Vague Dizziness / Imbalance** | Geriatric or Hypertensive | *"Are there unilateral facial droop, arm drift, or speech changes (FAST)?"* | If Yes → Escalates to **ESI 2** (Stroke Alert). |
+| **Calf Pain / Swelling** | Female on OCP or Recent Immobility | *"Is there unilateral leg swelling or shortness of breath on exertion?"* | If Yes → Escalates to **ESI 2** (DVT/PE risk). |
+| **High Fever** | Infant (< 1 yr) | *"Is the infant making wet diapers and making eye contact?"* | If No → Escalates to **ESI 2** (Decompensated sepsis). |
+| **Palpitations & Paresthesia** | Young adult, SpO2 100% | *"Is there lightheadedness, chest pressure, or history of SVT?"* | If Yes → ESI 2/3 (ECG check); If No → ESI 4 (Panic check). |
 
 ---
 
@@ -203,16 +210,20 @@ When $\text{Confidence} < 0.70$, `triage/voi.py` triggers targeted clinical chec
 
 ### 6.1 Safe Wait Time Windows & Auto-Retriage Trigger
 Each ESI tier has a strict maximum safe waiting threshold:
-- **ESI 1:** $0\text{ min}$ (Immediate Bedding)
-- **ESI 2:** $10\text{ min}$ max wait
-- **ESI 3:** $30\text{ min}$ max wait
-- **ESI 4:** $60\text{ min}$ max wait
-- **ESI 5:** $120\text{ min}$ max wait
+- **ESI 1:** 0 min (Immediate Bedding)
+- **ESI 2:** 10 min max wait
+- **ESI 3:** 30 min max wait
+- **ESI 4:** 60 min max wait
+- **ESI 5:** 120 min max wait
 
 **Deterioration Score Formula:**
-$$\text{Priority Score} = (6 - \text{ESI}) \times 100 + \left(\frac{\text{Wait Time}}{\text{Safe Threshold}}\right) \times 50 + \Delta \text{Vitals Penalty}$$
-- If $\text{Wait Time} > \text{Safe Threshold}$, the UI highlights the patient in **flashing amber/red** with a `"RE-TRIAGE REQUIRED"` alert.
-- If nurse inputs updated vitals showing decompensation (e.g., SBP drops from $115 \to 92$), the patient jumps to the top of the queue.
+
+```math
+\text{Priority Score} = (6 - \text{ESI}) \times 100 + \left(\frac{\text{Wait Time}}{\text{Safe Threshold}}\right) \times 50 + \Delta \text{Vitals Penalty}
+```
+
+- If Wait Time > Safe Threshold, the UI highlights the patient in **flashing amber/red** with a `"RE-TRIAGE REQUIRED"` alert.
+- If nurse inputs updated vitals showing decompensation (e.g., SBP drops from 115 → 92), the patient jumps to the top of the queue.
 
 ### 6.2 3× Surge Adaptation Mode
 When the charge nurse toggles **Surge Mode**:
@@ -260,22 +271,22 @@ When the charge nurse toggles **Surge Mode**:
 | # | ID | Name & Age | Presentation & History | Vitals | Expected ESI & Conf | Test Objective |
 |---|---|---|---|---|---|---|
 | **1** | `P-001` | Baby Leo (4 mo) | High fever, lethargy, poor feeding. Zero history. | T: 38.9°C, HR: 188, RR: 54, SpO2: 96% | **ESI 2** (92% Conf) | Pediatric PEWS vital red-line. |
-| **2** | `P-002` | Eleanor (78 yo F) | "Indigestion" and profound fatigue. Hx: Type 2 Diabetes. | T: 36.1°C, HR: 102, BP: 104/65, SpO2: 95% | **ESI 2** (65% $\to$ 85% post-VOI) | Geriatric atypical silent MI (ACS). |
+| **2** | `P-002` | Eleanor (78 yo F) | "Indigestion" and profound fatigue. Hx: Type 2 Diabetes. | T: 36.1°C, HR: 102, BP: 104/65, SpO2: 95% | **ESI 2** (65% → 85% post-VOI) | Geriatric atypical silent MI (ACS). |
 | **3** | `P-003` | Marcus (34 yo M) | Severe mid-epigastric pain. Zero prior history. | T: 37.1°C, HR: 86, BP: 138/88, SpO2: 99% | **ESI 3** (55% Conf) | Zero-history baseline; triggers VOI. |
-| **4** | `P-004` | David (67 yo M) | Sudden mild dizziness & left facial numbness. Hx: HTN. | T: 36.8°C, HR: 74, BP: 168/96, SpO2: 98% | **ESI 2** (60% Conf) | Ambiguous stroke mimic $\to$ VOI FAST. |
+| **4** | `P-004` | David (67 yo M) | Sudden mild dizziness & left facial numbness. Hx: HTN. | T: 36.8°C, HR: 74, BP: 168/96, SpO2: 98% | **ESI 2** (60% Conf) | Ambiguous stroke mimic → VOI FAST. |
 | **5** | `P-005` | Chloe (6 yo F) | Barking cough, inspiratory stridor at rest. Hx: Asthma. | T: 37.8°C, HR: 142, RR: 38, SpO2: 92% | **ESI 2** (90% Conf) | Pediatric airway compromise. |
 | **6** | `P-006` | Frank (82 yo M) | Shivering, mild confusion. Hx: Dementia. | T: 35.2°C (Hypothermic), HR: 110, BP: 86/52 | **ESI 2** (95% Conf) | Occult geriatric sepsis (qSOFA red-line). |
 | **7** | `P-007` | Jamal (28 yo M) | Sudden sharp chest pain after heavy deadlifting. | T: 36.6°C, HR: 88, BP: 122/78, SpO2: 99% | **ESI 3** (70% Conf) | Musculoskeletal vs Pleuritic check. |
 | **8** | `P-008` | Maria (45 yo F) | Migrating RLQ abdominal pain, nausea. Hx: None. | T: 38.0°C, HR: 94, BP: 125/80, SpO2: 98% | **ESI 3** (80% Conf) | Acute appendicitis resource triage. |
 | **9** | `P-009` | Sam (19 yo NB) | Inverted right ankle while running, bearing weight. | Vitals completely normal. Pain: 4/10. | **ESI 4** (95% Conf) | Fast-Track candidate under surge. |
 | **10**| `P-010` | Arthur (72 yo M) | Ground-level mechanical fall, on Warfarin. Normal vitals. | T: 36.7°C, HR: 72, BP: 135/80, SpO2: 98% | **ESI 2** (85% Conf) | High-risk medication alert (Intracranial bleed). |
-| **11**| `P-011` | Priya (29 yo F) | Rapid palpitations & tingling fingers. Zero history. | T: 36.7°C, HR: 138, BP: 132/84, SpO2: 100% | **ESI 3** (58% Conf) | SVT vs Panic attack $\to$ VOI ECG query. |
+| **11**| `P-011` | Priya (29 yo F) | Rapid palpitations & tingling fingers. Zero history. | T: 36.7°C, HR: 138, BP: 132/84, SpO2: 100% | **ESI 3** (58% Conf) | SVT vs Panic attack → VOI ECG query. |
 | **12**| `P-012` | Liam (8 yo M) | Superficial bicycle handlebar scrape. | Vitals normal. Pain: 2/10. | **ESI 5** (98% Conf) | Low-acuity non-urgent control. |
 | **13**| `P-013` | Brenda (58 yo F) | Left calf aching & slight breathlessness. Recent flight. | T: 36.9°C, HR: 98, BP: 128/82, SpO2: 94% | **ESI 2** (62% Conf) | DVT / Pulmonary embolism risk. |
 | **14**| `P-014` | Kenneth (61 yo M) | Sudden tearing back pain, syncope. Hx: HTN. | T: 36.2°C, HR: 114, BP: 84/48, SpO2: 94% | **ESI 1/2** (98% Conf) | Rupturing AAA / Hemorrhagic shock. |
 | **15**| `P-015` | Zoe (22 yo F) | Severe sore throat, muffled voice, drooling. | T: 38.8°C, HR: 106, BP: 118/74, SpO2: 97% | **ESI 2** (90% Conf) | Airway threat (Peritonsillar abscess). |
 | **16**| `P-016` | Robert (50 yo M) | Routine suture removal from laceration 10 days ago. | Vitals completely normal. | **ESI 5** (99% Conf) | Minimal resource utilization. |
-| **17**| `P-017` | Evelyn (88 yo F) | General debility over 4 days, low intake. Zero records. | T: 36.0°C, HR: 60, BP: 108/68, SpO2: 95% | **ESI 3** (52% Conf) | Zero-history geriatric decline $\to$ VOI check. |
+| **17**| `P-017` | Evelyn (88 yo F) | General debility over 4 days, low intake. Zero records. | T: 36.0°C, HR: 60, BP: 108/68, SpO2: 95% | **ESI 3** (52% Conf) | Zero-history geriatric decline → VOI check. |
 | **18**| `P-018` | Carlos (38 yo M) | Violent headache, photophobia, neck stiffness. | T: 39.4°C, HR: 118, BP: 130/85, SpO2: 97% | **ESI 2** (95% Conf) | Acute meningitis red flag. |
 | **19**| `P-019` | Hannah (16 yo F) | Severe asthma flare, 2-word dyspnea. Hx: Asthma. | T: 37.0°C, HR: 126, RR: 32, SpO2: 90% | **ESI 2** (96% Conf) | Hypoxemic adolescent asthma exacerbation. |
 | **20**| `P-020` | Tom (42 yo M) | Generalized hives after Amoxicillin, airway clear. | T: 36.8°C, HR: 82, BP: 124/80, SpO2: 99% | **ESI 4** (88% Conf) | Non-anaphylactic allergic reaction. |
@@ -336,7 +347,7 @@ The Streamlit UI is organized into 3 clear clinical workstations:
 - [x] **High-Risk Medication Danger Red-Lines:** Added Anticoagulant/DOAC head-trauma and immunocompromised fever alerts to `triage/rules.py`.
 - [x] **Expanded 10-Rule Multi-System VOI Bank (DEC-005):** Expanded `triage/voi.py` covering ACS, Stroke, DVT/PE, Sepsis, Dehydration, Acute Abdomen, and Anaphylaxis.
 - [x] **HIPAA Safe Harbor Audit De-Identification (DEC-006):** Implemented deterministic SHA-256 tokenization (`PT-HASH8`) in `triage/audit.py`.
-- [x] **Vital Sign Velocity Tracking (DEC-007):** Added $\Delta\text{Vitals}$ velocity scoring ($\Delta\text{SBP}$, $\Delta\text{HR}$, $\Delta\text{SpO}_2$) in `triage/queue.py`.
+- [x] **Vital Sign Velocity Tracking (DEC-007):** Added ΔVitals velocity scoring (ΔSBP, ΔHR, ΔSpO<sub>2</sub>) in `triage/queue.py`.
 - [x] **Visual-First Clinical HUD:** Clean, responsive, zero-emoji dashboard with symmetric KPI header cards and collapsible drawers.
 
 ### Active Milestones for Branch `v2`:
@@ -353,5 +364,5 @@ The Streamlit UI is organized into 3 clear clinical workstations:
 1. **Deterministic Safety Veto Invariant:** Physiological red-lines and high-risk medication stops ALWAYS override and veto any SLM candidate tier.
 2. **FHIR Interoperability Compliance:** Ingests standard HL7 FHIR v4 JSON Observation/Patient bundles and exports compliant `RiskAssessment` resources.
 3. **Multi-Workstation Concurrency:** Multiple browser tabs/tablets concurrently updating queue state without lockups or state loss (backed by SQLite WAL).
-4. **Sub-second Execution:** Latency strictly $<50\text{ms}$ for deterministic core and $<100\text{ms}$ for local SLM entity extraction.
-5. **HIPAA Safe Harbor Compliance:** Zero plaintext patient full names persisted in audit ledgers at rest.
+4. **Sub-second Execution:** Latency strictly < 50 ms for deterministic core and < 100 ms for local SLM entity extraction.
+5. **HIPAA Safe Harbor Compliance:** Zero plaintext patient full names persisted in audit ledgers at rest.

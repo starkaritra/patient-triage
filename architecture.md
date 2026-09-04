@@ -128,7 +128,7 @@ The FHIR v4 subsystem provides standard RESTful endpoints for bedside monitors, 
 3. **`POST /fhir/v4/Bundle`**: Ingests complete transaction bundles combining `Patient` and `Observation` entries.
 4. **`GET /fhir/v4/RiskAssessment/{patient_id}`**: Outputs a standard FHIR `RiskAssessment` resource containing:
    - `prediction.qualitative`: ESI Level (1 through 5).
-   - `prediction.probabilityDecimal`: Calibrated confidence score ($0.00\text{--}1.00$).
+   - `prediction.probabilityDecimal`: Calibrated confidence score (0.00–1.00).
    - `basis`: List of identified physiological red-lines and clinical risk factors.
 
 ```json
@@ -158,7 +158,10 @@ To enable reliable multi-workstation concurrency without external database setup
 1. **Write-Ahead Logging (WAL Mode):** `PRAGMA journal_mode=WAL;` and `PRAGMA synchronous=NORMAL;` allow concurrent reads from multiple nurse tablets while writes commit without thread lock contention.
 2. **ACID Transaction Gating:** Priority scores, wait times, and vital history snapshots are updated within explicit atomic transactions.
 3. **Multi-Parametric Vital Velocity Calculation:**
-   $$\Delta \text{Vitals Penalty} = 1.5 \times \Delta\text{HR} + 2.5 \times (-\Delta\text{SBP}) + 5.0 \times (-\Delta\text{SpO}_2)$$
+
+   ```math
+   \Delta \text{Vitals Penalty} = 1.5 \times \Delta\text{HR} + 2.5 \times (-\Delta\text{SBP}) + 5.0 \times (-\Delta\text{SpO}_2)
+   ```
 4. **Drop-in Enterprise Upgrade Path:**
    - Single-node / Edge Appliance: `SqliteQueueRepository` (Zero ops, built-in SQLite).
    - Clustered Enterprise Network: Set `QUEUE_BACKEND=nats` to use `NATSQueueRepository` over a NATS JetStream message bus.
@@ -266,17 +269,31 @@ auto_transfer_protocols:
 ## 5. Mathematical Formulations & Safety Invariants
 
 ### 5.1 Calibrated Confidence Metric
-$$\text{Confidence} = 1.0 - P_{\text{data}} - P_{\text{vitals}} - P_{\text{ambiguity}} - P_{\text{age\_risk}}$$
-- **$P_{\text{data}}$:** $0.15$ for zero history, $0.08$ for partial records, $0.00$ for reconciled medications.
-- **$P_{\text{vitals}}$:** $0.10$ for borderline physiological parameters.
-- **$P_{\text{ambiguity}}$:** $0.20$ for high-entropy differential complaints.
-- **$P_{\text{age\_risk}}$:** $0.10$ for vulnerable age groups ($<1$ yo, $>75$ yo).
+
+```math
+\text{Confidence} = 1.0 - P_{\text{data}} - P_{\text{vitals}} - P_{\text{ambiguity}} - P_{\text{age\_risk}}
+```
+
+- **P<sub>data</sub>**: 0.15 for zero history, 0.08 for partial records, 0.00 for reconciled medications.
+- **P<sub>vitals</sub>**: 0.10 for borderline physiological parameters.
+- **P<sub>ambiguity</sub>**: 0.20 for high-entropy differential complaints.
+- **P<sub>age_risk</sub>**: 0.10 for vulnerable age groups (< 1 yo, > 75 yo).
 
 ### 5.2 Dynamic Queue Priority Invariant
-$$\text{Priority Score} = (6 - \text{ESI}) \times 100 + \left(\frac{\text{Wait Time}}{\text{Safe Threshold}_{\text{facility}}}\right) \times 50 + \Delta \text{Vitals Penalty} + \text{Pain Penalty}$$
+
+```math
+\text{Priority Score} = (6 - \text{ESI}) \times 100 + \left(\frac{\text{Wait Time}}{\text{Safe Threshold}_{\text{facility}}}\right) \times 50 + \Delta \text{Vitals Penalty} + \text{Pain Penalty}
+```
 
 ### 5.3 Asymmetric Safety Invariant
-$$\text{Assigned ESI} = \begin{cases} \min(\text{ESI}_{\text{rule}}, \text{ESI}_{\text{SLM}}) & \text{if Rule Hit = True} \\ \text{ESI}_{\text{base}} - 1 & \text{if Confidence} < 0.70 \text{ and ESI} > 2 \\ \text{ESI}_{\text{base}} & \text{otherwise} \end{cases}$$
+
+```math
+\text{Assigned ESI} = \begin{cases} 
+\min(\text{ESI}_{\text{rule}}, \text{ESI}_{\text{SLM}}) & \text{if Rule Hit = True} \\ 
+\text{ESI}_{\text{base}} - 1 & \text{if } \text{Confidence} < 0.70 \text{ and } \text{ESI} > 2 \\ 
+\text{ESI}_{\text{base}} & \text{otherwise} 
+\end{cases}
+```
 
 ---
 
@@ -287,6 +304,6 @@ $$\text{Assigned ESI} = \begin{cases} \min(\text{ESI}_{\text{rule}}, \text{ESI}_
    - Serves an instant, permanent public URL (e.g. `https://patient-triage.streamlit.app`) with continuous deployment.
 2. **Hospital Pilot Edge Node (Air-Gapped LAN):**
    - Single-node Docker Compose stack running on hospital LAN.
-   - Guaranteed $<1\text{ms}$ latency, zero cloud egress, and 100% HIPAA Safe Harbor compliance.
+   - Guaranteed < 1 ms latency, zero cloud egress, and 100% HIPAA Safe Harbor compliance.
 3. **Enterprise HIPAA Cloud VPC:**
    - Multi-zone Kubernetes deployment with signed Business Associate Agreement (BAA) and IPSec VPN tunnels to hospital EHRs.
